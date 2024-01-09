@@ -1,3 +1,5 @@
+from random import randrange
+
 from PIL import Image, ImageDraw
 import pygame
 from numpy import sin, cos, tan, arctan, deg2rad, array, random
@@ -182,7 +184,7 @@ def new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, 
 
         for j in range(HalfOfVerticalResolution - WallHeight):
             n = (HalfOfVerticalResolution / (HalfOfVerticalResolution - j)) / delta_cos
-            x, y = playerX + delta_x * n, playerY + delta_y * n
+            x, y = playerX + delta_x * n * 2, playerY + delta_y * n * 2
 
             xx, yy = int(x * 2 % 1 * 100), int(y * 2 % 1 * 100)
             shade = (1 - (j / HalfOfVerticalResolution))
@@ -210,22 +212,39 @@ def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map,
     p_mouse = pygame.mouse.get_rel()
     playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, 0.2)
     collision_colors = [(0, 0, 0, 255), (128, 128, 128, 255)]
-    if not (level_map[int(x - 0.2)][int(y)] in collision_colors or level_map[int(x + 0.2)][
-        int(y)] in collision_colors or
-            level_map[int(x)][int(y - 0.2)] in collision_colors or level_map[int(x)][int(y + 0.2)] in collision_colors):
+    breakReason = 0
+    for d in range(2, int(move_koeff * 10)):
+        d /= 10
+        # if d != 0:
+        #     print(d)
+        if not (level_map[int(x - d)][int(y)] in collision_colors or level_map[int(x + d)][
+            int(y)] in collision_colors or
+                level_map[int(x)][int(y - d)] in collision_colors or level_map[int(x)][int(y + d)] in collision_colors):
+            continue
+
+        elif not (level_map[int(playerX - d)][int(y)] in collision_colors or level_map[int(playerX + d)][
+            int(y)] in collision_colors or level_map[int(playerX)][int(y - d)] in collision_colors or
+                  level_map[int(playerX)][
+                      int(y + d)] in collision_colors):
+            breakReason = 1
+            break
+
+        elif not (level_map[int(x - d)][int(playerY)] in collision_colors or level_map[int(x + d)][
+            int(playerY)] in collision_colors or level_map[int(x)][int(playerY - d)] in collision_colors or
+                  level_map[int(x)][
+                      int(playerY + d)] in collision_colors):
+            breakReason = 2
+            break
+        else:
+            breakReason = 3
+            break
+    if breakReason == 0:
         playerX, playerY = x, y
-
-    elif not (level_map[int(playerX - 0.2)][int(y)] in collision_colors or level_map[int(playerX + 0.2)][
-        int(y)] in collision_colors or level_map[int(playerX)][int(y - 0.2)] in collision_colors or
-              level_map[int(playerX)][
-                  int(y + 0.2)] in collision_colors):
+    elif breakReason == 1:
         playerY = y
-
-    elif not (level_map[int(x - 0.2)][int(playerY)] in collision_colors or level_map[int(x + 0.2)][
-        int(playerY)] in collision_colors or level_map[int(x)][int(playerY - 0.2)] in collision_colors or
-              level_map[int(x)][
-                  int(playerY + 0.2)] in collision_colors):
+    elif breakReason == 2:
         playerX = x
+
     return playerX, playerY, playerAngle
 
 
@@ -235,6 +254,29 @@ def islasers(level_map_list):
         if (255, 106, 0, 255) in el:
             return True
     return False
+
+
+def cut_sprite_sheet(file_name, sheetX, sheetY, HalfOfVerticalResolution, scrY):
+    sprite_sheet = pygame.image.load(os.path.join('data', file_name))
+    sprites = []
+    spriteX = (sheetX // 3)
+    spriteY = (sheetY // 4)
+    for i in range(3):
+        xx = i * spriteX
+        sprites.append([])
+        for j in range(4):
+            yy = j * spriteY
+            sprites.append([pygame.Surface.subsurface(sprite_sheet, (xx, yy, spriteX, spriteY))])
+    sprite_scale = numpy.asarray(sprites[0][0].get_size()) * HalfOfVerticalResolution / scrY
+    return sprites, sprite_scale
+
+
+def place_sprites(level_map, mapX, mapY, color, type_of_sprite):
+    sprites = []
+    for enemyX in range(mapX):
+        for enemyY in range(mapY):
+            if level_map[enemyX, enemyY] == color:
+                sprites.append([enemyX, enemyY, 0, type_of_sprite])
 
 
 def main(file, k, walls_texture, floor_textire):
@@ -279,11 +321,11 @@ def main(file, k, walls_texture, floor_textire):
 
     wall = pygame.surfarray.array3d(pygame.image.load(os.path.join('data', walls_texture)))
 
+    enemies = random.uniform(0, mapX, (10, 4))
     sprite = pygame.image.load(os.path.join('data', 'test sprite.png'))
     sprite_size = numpy.asarray(sprite.get_size())
     sprite = pygame.transform.scale(sprite, sprite_size * 10)
     sprite_size = numpy.asarray(sprite.get_size())
-    enx, eny = playerX, playerY
 
     frame = random.uniform(0, 0, (horizontalResolution, HalfOfVerticalResolution * 2, 3))
 
@@ -332,22 +374,44 @@ def main(file, k, walls_texture, floor_textire):
         surface = pygame.surfarray.make_surface(frame * 255)
         surface = pygame.transform.scale(surface, (scrX, scrY))
 
-        angle = numpy.arctan((eny - playerY + 0.00001) / (enx - playerX + 0.00001))
-        if abs(playerX + cos(angle) - enx) > abs(playerX - enx):
-            angle = (angle - numpy.pi) % (2 * numpy.pi)
-        angle_difference = (playerAngle - angle) % (2 * numpy.pi)
-        if angle_difference > (11 * numpy.pi / 6) or angle_difference < (numpy.pi / 4):
-            distanceToSprite = (numpy.sqrt((playerX - enx) ** 2 + (playerY - eny) ** 2)) / k
-            antifish = cos(angle_difference)
-            scaling = (min(1 / distanceToSprite, 2) / antifish)
+        # sprites:
+        for en in range(len(enemies)):
+            enx, eny = enemies[en][0], enemies[en][1]
+            angle = numpy.arctan((eny - playerY) / (enx - playerX + 0.00001))
+            if abs(playerX + cos(angle) - enx) > abs(playerX - enx):
+                angle = (angle - numpy.pi) % (2 * numpy.pi)
+            angle_difference = (playerAngle - angle) % (2 * numpy.pi)
+            if angle_difference > (11 * numpy.pi / 6) or angle_difference < (numpy.pi / 4):
+                distanceToSprite = (numpy.sqrt((playerX - enx) ** 2 + (playerY - eny) ** 2)) / k
+                enemies[en][2] = angle_difference
+                enemies[en][3] = 1 / distanceToSprite
+                RayX, RayY = enx, eny
+                Raykoeff = 0.01
+                RayAngleX, RayAngleY = Raykoeff * (playerX - enx) / distanceToSprite, Raykoeff * (
+                        playerY - eny) / distanceToSprite
+                for i in range(int(distanceToSprite / Raykoeff)):
+                    RayX += RayAngleX
+                    RayY += RayAngleY
+                    if level_map[RayX, RayY] == (0, 0, 0, 255):
+                        enemies[en][3] = 999
+            else:
+                enemies[en][3] = 999
+        enemies = enemies[enemies[:, 3].argsort()]
+        for en in range(len(enemies)):
+            if enemies[en][3] > 10:
+                break
+            antifish = cos(enemies[en][2])
+            scaling = (min(enemies[en][3], 2) / antifish)
             vertical = scrY // 2 + (scrY // 2) * scaling - scaling * sprite_size[1] / 2
-            horizontal = (scrX // 2) - scrX * sin(angle_difference)
-            print(str(scaling)[:-13], sprite_size)
+            horizontal = (scrX // 2) - scrX * sin(enemies[en][2])
+            # print(str(scaling)[:-13], sprite_size)
             sprite_im = pygame.transform.scale(sprite, sprite_size * scaling)
             surface.blit(sprite_im, (horizontal, vertical))
-        print(angle_difference, enx, eny, playerX, playerY)
+        # print(angle_difference, enx, eny, playerX, playerY)
 
         screen.blit(surface, (0, 0))
+
+        # end sprites
 
         draw_lasers = islasers(level_map_list)
 
@@ -409,6 +473,7 @@ def main(file, k, walls_texture, floor_textire):
                 sys.exit()
             if event.type == clear_lasers:
                 level_map = laser.clear_laser(im)
+                # level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
             if event.type == laser_reload:
                 laser.reload()
             if event.type == pygame.MOUSEBUTTONDOWN and laser.get_can_shoot():
@@ -422,7 +487,7 @@ def main(file, k, walls_texture, floor_textire):
 
 if __name__ == '__main__':
     k = 20
-    file = 'map.v11.png'
+    file = 'map.v14.png'
     walls_texture = 'дерево.png'
     floor_textire = 'дерево.png'
     main(file, k, walls_texture, floor_textire)
