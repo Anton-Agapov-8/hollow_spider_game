@@ -144,6 +144,37 @@ class LaserTypeWeapon(GunTypeWeapon):
         return self.lasers_list
 
 
+class Creature():
+    def __init__(self, creatureX, creatureY, creatureAngle, scale):
+        self.creatureX = creatureX
+        self.creatureY = creatureY
+        self.creatureAngle = creatureAngle
+        self.angleDifference = numpy.pi
+        self.distanceToPlayer = 999
+        self.scale = scale
+
+    def get_scale(self):
+        return self.scale
+
+    def get_position(self):
+        return self.creatureX, self.creatureY
+
+    def get_angle(self):
+        return self.creatureAngle
+
+    def set_angleDifference(self, newAngleDifference):
+        self.angleDifference = newAngleDifference
+
+    def set_distanceToPlayer(self, newDistanceToPlayer):
+        self.distanceToPlayer = newDistanceToPlayer
+
+    def get_angleDifference(self):
+        return self.angleDifference
+
+    def get_distanceToPlayer(self):
+        return self.distanceToPlayer
+
+
 def PixelAccess_to_list(PixelAccess, size):
     result = List()
     for i in range(size[0]):
@@ -194,7 +225,7 @@ def new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, 
     return frame
 
 
-def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map, keys):
+def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map, keys, mapX, mapY):
     move_koeff *= clock_koeff
     x, y = playerX, playerY
     if keys[pygame.K_w]:
@@ -215,8 +246,8 @@ def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map,
     breakReason = 0
     for d in range(2, int(move_koeff * 10)):
         d /= 10
-        # if d != 0:
-        #     print(d)
+        if x <= 0 or y <= 0 or x >= mapX or y >= mapY:
+            break
         if not (level_map[int(x - d)][int(y)] in collision_colors or level_map[int(x + d)][
             int(y)] in collision_colors or
                 level_map[int(x)][int(y - d)] in collision_colors or level_map[int(x)][int(y + d)] in collision_colors):
@@ -256,7 +287,7 @@ def islasers(level_map_list):
     return False
 
 
-def cut_sprite_sheet(file_name, sheetX, sheetY, HalfOfVerticalResolution, scrY):
+def cut_sprite_sheet(file_name, sheetX, sheetY):
     sprite_sheet = pygame.image.load(os.path.join('data', file_name))
     sprites = []
     spriteX = (sheetX // 3)
@@ -266,17 +297,43 @@ def cut_sprite_sheet(file_name, sheetX, sheetY, HalfOfVerticalResolution, scrY):
         sprites.append([])
         for j in range(4):
             yy = j * spriteY
-            sprites.append([pygame.Surface.subsurface(sprite_sheet, (xx, yy, spriteX, spriteY))])
-    sprite_scale = numpy.asarray(sprites[0][0].get_size()) * HalfOfVerticalResolution / scrY
-    return sprites, sprite_scale
+            subsurf = pygame.Surface.subsurface(sprite_sheet, (xx, yy, spriteX, spriteY))
+            # subsurf = pygame.transform.scale(subsurf, (spriteX * 10, spriteY * 10))
+            sprites[i].append(subsurf)
+    print(sprites)
+    return sprites
 
 
-def place_sprites(level_map, mapX, mapY, color, type_of_sprite):
+def place_sprites(level_map, mapX, mapY, color, scale_koeff):
     sprites = []
     for enemyX in range(mapX):
         for enemyY in range(mapY):
             if level_map[enemyX, enemyY] == color:
-                sprites.append([enemyX, enemyY, 0, type_of_sprite])
+                sprites.append(Creature(enemyX, enemyY, 0, scale_koeff))
+    return sprites
+
+
+def draw_sprites(surface, sprite_sheet, enemies, scrY, scrX, cycle_timer, sprite_img_size, enAngleDiff):
+    cycle = int(cycle_timer) % 4
+    if cycle == 3:
+        cycle = 1
+    for en in range(len(enemies)):
+        sprites_scaling = enemies[en].get_scale()
+        distance = enemies[en].get_distanceToPlayer()
+        if distance > 10:
+            break
+        sprite_size = sprite_img_size
+        antifish = cos(enemies[en].get_angleDifference())
+        scaling = (min(distance, 2) / antifish) * sprites_scaling
+
+        vertical = scrY // 2 + (scrY // 2) * (min(distance, 2) / antifish)
+        horizontal = (scrX // 2) - scrX * sin(enemies[en].get_angleDifference())
+        sprite_im = pygame.transform.scale(sprite_sheet[cycle][int(enAngleDiff)],
+                                           (sprite_size[0] * scaling, sprite_size[1] * scaling))
+        # print(horizontal, vertical, '|', surface.get_size(), "|", scrX, scrY)
+        surface.blit(sprite_im,
+                     (horizontal - (sprite_size[0] * scaling) // 2, vertical - (sprite_size[1] * scaling)))
+    return surface
 
 
 def main(file, k, walls_texture, floor_textire):
@@ -309,7 +366,6 @@ def main(file, k, walls_texture, floor_textire):
     fps = 40
     clock = pygame.time.Clock()
     clock2 = pygame.time.Clock()
-    playerCollisionDepth = k
     laser = LaserTypeWeapon('laser', 400, 20, 'laser_gun_no_shoot5.1.png', 'laser_gun_shoot6.png',
                             'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png', 'laser_gun_no_shoot5.3.png',
                             'laser_gun_no_shoot5.4.png')
@@ -321,11 +377,15 @@ def main(file, k, walls_texture, floor_textire):
 
     wall = pygame.surfarray.array3d(pygame.image.load(os.path.join('data', walls_texture)))
 
-    enemies = random.uniform(0, mapX, (10, 4))
-    sprite = pygame.image.load(os.path.join('data', 'test sprite.png'))
-    sprite_size = numpy.asarray(sprite.get_size())
-    sprite = pygame.transform.scale(sprite, sprite_size * 10)
-    sprite_size = numpy.asarray(sprite.get_size())
+    # enemies = random.uniform(0, mapX, (10, 4))
+    enemies = place_sprites(level_map, mapX, mapY, (255, 216, 0, 255), 5)
+
+    sprite_sheet = cut_sprite_sheet('test_sprites_list.png', 300, 400)
+
+    # sprite = pygame.image.load(os.path.join('data', 'test sprite.png'))
+    # sprite_size = numpy.asarray(sprite.get_size())
+    # sprite = pygame.transform.scale(sprite, sprite_size * 10)
+    # sprite_size = numpy.asarray(sprite.get_size())
 
     frame = random.uniform(0, 0, (horizontalResolution, HalfOfVerticalResolution * 2, 3))
 
@@ -336,6 +396,7 @@ def main(file, k, walls_texture, floor_textire):
     pygame.event.set_grab(1)
     size = min(mapX, mapY)
     while True:
+        cycle_timer = pygame.time.get_ticks()
         y_gun = int(sin(gun_i) * gun_k)
         screen.fill((255, 255, 0))
         clear_lasers = pygame.USEREVENT + 1
@@ -375,16 +436,18 @@ def main(file, k, walls_texture, floor_textire):
         surface = pygame.transform.scale(surface, (scrX, scrY))
 
         # sprites:
+        enAngleDiff = 0
         for en in range(len(enemies)):
-            enx, eny = enemies[en][0], enemies[en][1]
+            enx, eny = enemies[en].get_position()
             angle = numpy.arctan((eny - playerY) / (enx - playerX + 0.00001))
             if abs(playerX + cos(angle) - enx) > abs(playerX - enx):
                 angle = (angle - numpy.pi) % (2 * numpy.pi)
             angle_difference = (playerAngle - angle) % (2 * numpy.pi)
             if angle_difference > (11 * numpy.pi / 6) or angle_difference < (numpy.pi / 4):
                 distanceToSprite = (numpy.sqrt((playerX - enx) ** 2 + (playerY - eny) ** 2)) / k
-                enemies[en][2] = angle_difference
-                enemies[en][3] = 1 / distanceToSprite
+                enAngleDiff = ((enemies[en].get_angle() - playerAngle - 3 * numpy.pi / 4) % (2 * numpy.pi)) / (numpy.pi / 2)
+                enemies[en].set_angleDifference(angle_difference)
+                enemies[en].set_distanceToPlayer(1 / distanceToSprite)
                 RayX, RayY = enx, eny
                 Raykoeff = 0.01
                 RayAngleX, RayAngleY = Raykoeff * (playerX - enx) / distanceToSprite, Raykoeff * (
@@ -393,20 +456,11 @@ def main(file, k, walls_texture, floor_textire):
                     RayX += RayAngleX
                     RayY += RayAngleY
                     if level_map[RayX, RayY] == (0, 0, 0, 255):
-                        enemies[en][3] = 999
+                        enemies[en].set_distanceToPlayer(999)
             else:
-                enemies[en][3] = 999
-        enemies = enemies[enemies[:, 3].argsort()]
-        for en in range(len(enemies)):
-            if enemies[en][3] > 10:
-                break
-            antifish = cos(enemies[en][2])
-            scaling = (min(enemies[en][3], 2) / antifish)
-            vertical = scrY // 2 + (scrY // 2) * scaling - scaling * sprite_size[1] / 2
-            horizontal = (scrX // 2) - scrX * sin(enemies[en][2])
-            # print(str(scaling)[:-13], sprite_size)
-            sprite_im = pygame.transform.scale(sprite, sprite_size * scaling)
-            surface.blit(sprite_im, (horizontal, vertical))
+                enemies[en].set_distanceToPlayer(999)
+        enemies.sort(key=lambda enemy: enemy.get_distanceToPlayer())
+        surface = draw_sprites(surface, sprite_sheet, enemies, scrY, scrX, cycle_timer, (100, 100), enAngleDiff)
         # print(angle_difference, enx, eny, playerX, playerY)
 
         screen.blit(surface, (0, 0))
@@ -451,7 +505,7 @@ def main(file, k, walls_texture, floor_textire):
         keys = pygame.key.get_pressed()
         clock_koeff = clock2.tick() / 500
         playerX, playerY, playerAngle = movements(playerX, playerY, playerAngle, move_koeff, clock_koeff,
-                                                  level_map_list, keys)
+                                                  level_map_list, keys, mapX, mapY)
         if not (keys[pygame.K_d] or keys[pygame.K_a] or keys[pygame.K_w] or keys[pygame.K_s]):
             gun_k = 0
             gun_i = 0
