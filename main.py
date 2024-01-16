@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 import pygame
 from numpy import sin, cos, tan, arctan, deg2rad, array, random
 import numpy
-from numba import njit
+from numba import njit, jit
 from numba.typed import List
 import sys
 import os
@@ -28,28 +28,20 @@ class Weapon():
         self.laser_color_on_map = laser_color_on_map
         self.laser_color = laser_color
 
-    def fire(self, map_image, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY):
+    def fire(self, map_image, level_map_list, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY):
         if self.can_shoot:
+            self.reload_timer = 0
             level_map = map_image.load()
             draw = ImageDraw.Draw(map_image)
-            EyeX = cos(playerAngle)
-            EyeY = sin(playerAngle)
-            distanceToWall = 0
-            hitWall = False
-            while distanceToWall < playerViewDepth and not hitWall:
-                distanceToWall += 0.1
-                RayPointX = int(playerX + EyeX * distanceToWall) - 1
-                RayPointY = int(playerY + EyeY * distanceToWall) - 1
-                if RayPointX < 0 or RayPointX >= mapX or RayPointY < 0 or RayPointY >= mapY:
-                    hitWall = True
-                    distanceToWall = playerViewDepth
-                elif level_map[RayPointX, RayPointY] == (0, 0, 0, 255) or level_map[RayPointX, RayPointY] == (
-                        128, 128, 128, 255):
-                    hitWall = True
+            color_list = [(0, 0, 0, 255), (128, 128, 128, 255)]
+            coord_list = [playerX, playerY]
+            d, RayPointX, RayPointY, hitWall = get_distance(level_map_list, mapX, mapY, playerAngle,
+                                                            List(coord_list), 100, List(color_list),
+                                                            List([(-1, -1), (-1, -1)]))
             laserX = playerX
             laserY = playerY
-            laserXEnd = RayPointX
-            laserYEnd = RayPointY
+            laserXEnd = RayPointX - sin(playerAngle)
+            laserYEnd = RayPointY - cos(playerAngle)
             draw.line((laserX, laserY, laserXEnd, laserYEnd), fill=self.laser_color_on_map, width=1)
             # print(f'playerAngle in fire {playerAngle}, laser coords: {(laserX, laserY, laserXEnd, laserYEnd)}')
             self.lasers_list.append([laserX, laserY, laserXEnd, laserYEnd, playerAngle])
@@ -83,7 +75,6 @@ class Weapon():
                 j += 1
             if self.reload_timer >= self.max_reload_timer_value:
                 self.set_model(self.model_no_shoot)
-                self.reload_timer = 0
                 self.can_shoot = True
 
     def get_can_shoot(self):
@@ -131,7 +122,7 @@ class HandHitWeapon():
         self.clock = pygame.time.Clock()
         self.laser_color_on_map = hit_color_on_map
 
-    def fire(self, map_image, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY):
+    def fire(self, map_image, level_map_list, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY):
         if self.can_hit:
             level_map = map_image.load()
             draw = ImageDraw.Draw(map_image)
@@ -202,7 +193,8 @@ class HandHitWeapon():
 
 
 class Creature():
-    def __init__(self, creatureX, creatureY, creatureAngle, creatureFOV, health, scale, sprite_sheet, dead_sprite,
+    def __init__(self, creatureX, creatureY, creatureAngle, creatureFOV, damage, reload_time, health, scale,
+                 sprite_sheet, dead_sprite,
                  steps_frame_number):
         self.creatureX = creatureX
         self.creatureY = creatureY
@@ -216,6 +208,10 @@ class Creature():
         self.start_health = health
         self.health = health
         self.dead_sprite = dead_sprite
+        self.reload_timer_clock = pygame.time.Clock()
+        self.reload_timer = 0
+        self.damage = damage
+        self.reload_time = reload_time
 
     def get_scale(self):
         return self.scale
@@ -253,49 +249,21 @@ class Creature():
     def get_health(self):
         return self.health
 
-    def ai(self, clock_koeff, level_map, mapX, mapY, playerX, playerY, playerHealth, playerAngle):
+    def ai(self, clock_koeff, level_map, map_image, mapX, mapY, playerX, playerY, playerHealth):
         # level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
         seePlayer = check_for_player(playerX, playerY, self.creatureX, self.creatureY, self.creatureAngle,
                                      self.creatureFOV, level_map, mapX, mapY, k)
         if seePlayer:
             self.creatureAngle = numpy.pi + angle_to_player(playerX, playerY, self.creatureX, self.creatureY)
-            print(playerAngle, ' | ', self.creatureAngle)
+            # print(playerAngle, ' | ', self.creatureAngle)
         speed = 1
         move_koeff = speed * clock_koeff
         x = self.creatureX + numpy.cos(self.creatureAngle) * move_koeff
         y = self.creatureY + numpy.sin(self.creatureAngle) * move_koeff
         collision_colors = [(0, 0, 0, 255), (128, 128, 128, 255)]
-        breakReason = 0
-        for d in range(1, int(move_koeff * 20)):
-            d /= 20
-            if x - d <= 0 or y - d <= 0 or x + d >= mapX - 1 or y + d >= mapY - 1 or self.creatureX - d <= 0 or \
-                    self.creatureY - d <= 0 or self.creatureX + d >= mapX - 1 or self.creatureY + d >= mapY - 1:
-                breakReason = 3
-                break
-            if not (level_map[int(x - d)][int(y)] in collision_colors or level_map[int(x + d)][
-                int(y)] in collision_colors or level_map[int(x)][int(y - d)] in collision_colors or level_map[int(x)][
-                        int(y + d)] in collision_colors):
-                continue
-
-            elif not (level_map[int(self.creatureX - d)][int(y)] in collision_colors or
-                      level_map[int(self.creatureX + d)][int(y)] in collision_colors or level_map[int(self.creatureX)][
-                          int(y - d)] in collision_colors or level_map[int(self.creatureX)][
-                          int(y + d)] in collision_colors):
-                breakReason = 1
-                break
-
-            elif not (level_map[int(x - d)][int(self.creatureY)] in collision_colors or level_map[int(x + d)][
-                int(self.creatureY)] in collision_colors or level_map[int(x)][
-                          int(self.creatureY - d)] in collision_colors or level_map[int(x)][
-                          int(self.creatureY + d)] in collision_colors):
-                breakReason = 2
-                break
-            else:
-                breakReason = 3
-                break
-        if breakReason == 0:
-            self.creatureX, self.creatureY = x, y
-        elif breakReason == 1:
+        self.creatureX, self.creatureY, breakReason = collision(x, y, self.creatureX, self.creatureY, move_koeff,
+                                                                level_map, mapX, mapY, collision_colors)
+        if breakReason == 1:
             if not seePlayer:
                 rv = randrange(2)
                 if rv == 1:
@@ -304,7 +272,6 @@ class Creature():
                     self.creatureAngle = (self.creatureAngle - numpy.pi / 4)
                 if self.creatureAngle >= numpy.pi:
                     self.creatureAngle -= numpy.pi * (self.creatureAngle % numpy.pi)
-            self.creatureY = y
         elif breakReason == 2:
             if not seePlayer:
                 rv = randrange(2)
@@ -314,7 +281,6 @@ class Creature():
                     self.creatureAngle = (self.creatureAngle - numpy.pi / 4)
                 if self.creatureAngle >= numpy.pi:
                     self.creatureAngle -= numpy.pi * (self.creatureAngle % numpy.pi)
-            self.creatureX = x
         elif breakReason == 3:
             if not seePlayer:
                 rv = randrange(2)
@@ -324,12 +290,173 @@ class Creature():
                     self.creatureAngle = (self.creatureAngle - numpy.pi / 4)
         listx = [int(playerX) - 1, int(playerX), int(playerX) + 1]
         listy = [int(playerY) - 1, int(playerY), int(playerY) + 1]
-        if int(self.creatureX) in listx and int(self.creatureY) in listy:
-            playerHealth -= 20
-        return playerHealth
+        self.reload_timer += self.reload_timer_clock.tick()
+        if int(self.creatureX) in listx and int(self.creatureY) in listy and self.reload_timer > self.reload_time:
+            playerHealth -= self.damage
+            self.reload_timer = 0
+        return playerHealth, map_image.load()
 
     def get_creatureFOV(self):
         return self.creatureFOV
+
+
+class LaserCreature():
+    def __init__(self, creatureX, creatureY, creatureAngle, creatureFOV, damage, reload_time, laser_color_on_map,
+                 laser_color, health, scale, sprite_sheet, dead_sprite, steps_frame_number):
+        self.creatureX = creatureX
+        self.creatureY = creatureY
+        self.creatureAngle = creatureAngle
+        self.creatureFOV = float(creatureFOV)
+        self.angleDifference = numpy.pi
+        self.distanceToPlayer = 999
+        self.scale = scale
+        self.sprite_sheet = sprite_sheet
+        self.steps_frame_number = steps_frame_number
+        self.start_health = health
+        self.health = health
+        self.dead_sprite = dead_sprite
+        self.reload_timer_clock = pygame.time.Clock()
+        self.reload_timer = 0
+        self.lasers_list = []
+        self.laser_color_on_map = laser_color_on_map
+        self.laser_color = laser_color
+        self.damage = damage
+        self.reload_time = reload_time
+
+    def get_scale(self):
+        return self.scale
+
+    def get_position(self):
+        return self.creatureX, self.creatureY
+
+    def get_angle(self):
+        return self.creatureAngle
+
+    def set_angleDifference(self, newAngleDifference):
+        self.angleDifference = newAngleDifference
+
+    def set_distanceToPlayer(self, newDistanceToPlayer):
+        self.distanceToPlayer = newDistanceToPlayer
+
+    def get_angleDifference(self):
+        return self.angleDifference
+
+    def get_distanceToPlayer(self):
+        return self.distanceToPlayer
+
+    def get_sprites(self):
+        if self.health > 0:
+            return self.sprite_sheet
+        else:
+            return [[self.dead_sprite]]
+
+    def get_steps_frame_number(self):
+        return self.steps_frame_number
+
+    def set_health(self, new_health):
+        self.health = new_health
+
+    def get_health(self):
+        return self.health
+
+    def fire(self, map_image, mapX, mapY, level_map_list):
+        level_map = map_image.load()
+        self.reload_timer += self.reload_timer_clock.tick()
+        if self.reload_timer > self.reload_time:
+            # print(self.reload_timer)
+            self.reload_timer = 0
+            d = 50
+            draw = ImageDraw.Draw(map_image)
+            color_list = [(0, 0, 0, 255), (128, 128, 128, 255)]
+            coord_list = [self.creatureX, self.creatureY]
+            d, RayPointX, RayPointY, hitWall = get_distance(level_map_list, mapX, mapY, self.creatureAngle,
+                                                            List(coord_list), 100, List(color_list),
+                                                            List([(-1, -1), (-1, -1)]))
+            laserX = self.creatureX
+            laserY = self.creatureY
+            laserXEnd = RayPointX - sin(self.creatureAngle)
+            laserYEnd = RayPointY - cos(self.creatureAngle)
+            draw.line((laserX, laserY, laserXEnd, laserYEnd), fill=self.laser_color_on_map, width=1)
+            self.lasers_list.append([laserX, laserY, laserXEnd, laserYEnd, self.creatureAngle])
+        return level_map
+
+    def ai(self, clock_koeff, level_map, map_image, mapX, mapY, playerX, playerY, playerHealth):
+        # level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
+        seePlayer = check_for_player(playerX, playerY, self.creatureX, self.creatureY, self.creatureAngle,
+                                     self.creatureFOV, level_map, mapX, mapY, k)
+        if seePlayer:
+            deltaAngle = randrange(-1 * int(numpy.pi), int(numpy.pi)) / 20
+            # print(deltaAngle)
+            self.creatureAngle = numpy.pi + angle_to_player(playerX, playerY, self.creatureX,
+                                                            self.creatureY) + deltaAngle
+            # print(playerAngle, ' | ', self.creatureAngle)
+            level_map = self.fire(map_image, mapX, mapY, level_map)
+            for xx in [-1, 0, 1]:
+                for yy in [-1, 0, 1]:
+                    if 0 <= playerX + xx < mapX and 0 <= playerY + yy < mapY:
+                        if level_map[playerX + xx, playerY + yy] == self.laser_color_on_map:
+                            playerHealth -= self.damage
+            return playerHealth, level_map
+        speed = 1
+        move_koeff = speed * clock_koeff
+        x = self.creatureX + numpy.cos(self.creatureAngle) * move_koeff
+        y = self.creatureY + numpy.sin(self.creatureAngle) * move_koeff
+        collision_colors = List([(0, 0, 0, 255), (128, 128, 128, 255)])
+        self.creatureX, self.creatureY, breakReason = collision(x, y, self.creatureX, self.creatureY, move_koeff,
+                                                                level_map, mapX, mapY, collision_colors)
+        if breakReason == 1:
+            if not seePlayer:
+                rv = randrange(2)
+                if rv == 1:
+                    self.creatureAngle = (self.creatureAngle + numpy.pi / 4)
+                else:
+                    self.creatureAngle = (self.creatureAngle - numpy.pi / 4)
+                if self.creatureAngle >= numpy.pi:
+                    self.creatureAngle -= numpy.pi * (self.creatureAngle % numpy.pi)
+        elif breakReason == 2:
+            if not seePlayer:
+                rv = randrange(2)
+                if rv == 1:
+                    self.creatureAngle = (self.creatureAngle + numpy.pi / 4)
+                else:
+                    self.creatureAngle = (self.creatureAngle - numpy.pi / 4)
+                if self.creatureAngle >= numpy.pi:
+                    self.creatureAngle -= numpy.pi * (self.creatureAngle % numpy.pi)
+        elif breakReason == 3:
+            if not seePlayer:
+                rv = randrange(2)
+                if rv == 1:
+                    self.creatureAngle = (self.creatureAngle + numpy.pi / 4)
+                else:
+                    self.creatureAngle = (self.creatureAngle - numpy.pi / 4)
+        listx = [int(playerX) - 1, int(playerX), int(playerX) + 1]
+        listy = [int(playerY) - 1, int(playerY), int(playerY) + 1]
+        level_map = map_image.load()
+        return playerHealth, level_map
+
+    def get_creatureFOV(self):
+        return self.creatureFOV
+
+    def get_laser_map_color(self):
+        return self.laser_color_on_map
+
+    def get_laser_color(self):
+        return self.laser_color
+
+    def clear_laser(self, map_image):
+        # print('__________________________________________________')
+        draw = ImageDraw.Draw(map_image)
+        level_map = map_image.load()
+        for i in range(len(self.lasers_list)):
+            if self.lasers_list:
+                draw.line(
+                    (self.lasers_list[i][0], self.lasers_list[i][1], self.lasers_list[i][2], self.lasers_list[i][3]),
+                    fill=(255, 255, 255, 255), width=1)
+                self.lasers_list.remove(self.lasers_list[i])
+        return level_map
+
+    def get_laser_list(self):
+        return self.lasers_list
 
 
 @njit()
@@ -390,24 +517,8 @@ def new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, 
     return frame
 
 
-def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map, keys, mapX, mapY):
-    move_koeff *= clock_koeff
-    x, y = playerX, playerY
-    if keys[pygame.K_w]:
-        x = playerX + numpy.cos(playerAngle) * move_koeff
-        y = playerY + numpy.sin(playerAngle) * move_koeff
-    if keys[pygame.K_s]:
-        x = playerX - numpy.cos(playerAngle) * move_koeff
-        y = playerY - numpy.sin(playerAngle) * move_koeff
-    if keys[pygame.K_d]:
-        x = playerX - numpy.sin(playerAngle) * move_koeff
-        y = playerY + numpy.cos(playerAngle) * move_koeff
-    if keys[pygame.K_a]:
-        x = playerX + numpy.sin(playerAngle) * move_koeff
-        y = playerY - numpy.cos(playerAngle) * move_koeff
-    p_mouse = pygame.mouse.get_rel()
-    playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, 0.2)
-    collision_colors = [(0, 0, 0, 255), (128, 128, 128, 255)]
+@njit()
+def collision(x, y, playerX, playerY, move_koeff, level_map, mapX, mapY, collision_colors):
     breakReason = 0
     for d in range(1, int(move_koeff * 20)):
         d /= 20
@@ -437,11 +548,33 @@ def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map,
             breakReason = 3
             break
     if breakReason == 0:
-        playerX, playerY = x, y
+        return x, y, breakReason
     elif breakReason == 1:
-        playerY = y
+        return playerX, y, breakReason
     elif breakReason == 2:
-        playerX = x
+        return x, playerY, breakReason
+    return playerX, playerY, breakReason
+
+
+def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map, keys, mapX, mapY):
+    move_koeff *= clock_koeff
+    x, y = playerX, playerY
+    if keys[pygame.K_w]:
+        x = playerX + numpy.cos(playerAngle) * move_koeff
+        y = playerY + numpy.sin(playerAngle) * move_koeff
+    if keys[pygame.K_s]:
+        x = playerX - numpy.cos(playerAngle) * move_koeff
+        y = playerY - numpy.sin(playerAngle) * move_koeff
+    if keys[pygame.K_d]:
+        x = playerX - numpy.sin(playerAngle) * move_koeff
+        y = playerY + numpy.cos(playerAngle) * move_koeff
+    if keys[pygame.K_a]:
+        x = playerX + numpy.sin(playerAngle) * move_koeff
+        y = playerY - numpy.cos(playerAngle) * move_koeff
+    p_mouse = pygame.mouse.get_rel()
+    playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, 0.2)
+    collision_colors = List([(0, 0, 0, 255), (128, 128, 128, 255)])
+    playerX, playerY, b = collision(x, y, playerX, playerY, move_koeff, level_map, mapX, mapY, collision_colors)
     if playerAngle < 0:
         playerAngle = numpy.pi * 2 + playerAngle
     if playerAngle > numpy.pi * 2:
@@ -450,9 +583,9 @@ def movements(playerX, playerY, playerAngle, move_koeff, clock_koeff, level_map,
 
 
 @njit()
-def islasers(level_map_list):
+def islasers(level_map_list, color):
     for el in level_map_list:
-        if (255, 106, 0, 255) in el:
+        if color in el:
             return True
     return False
 
@@ -474,14 +607,19 @@ def cut_sprite_sheet(file_name, sheetX, sheetY, steps_frame_number):
     return sprites
 
 
-def place_sprites(level_map, mapX, mapY, color, scale_koeff, sprite_sheet, dead_sprite, steps_frame_number):
+def place_sprites(level_map, mapX, mapY, color1, color2, scale_koeff, sprite_sheet, dead_sprite, steps_frame_number):
     sprites = []
     for enemyX in range(mapX):
         for enemyY in range(mapY):
-            if level_map[enemyX, enemyY] == color:
+            if level_map[enemyX, enemyY] == color1:
                 sprites.append(
-                    Creature(enemyX, enemyY, 0, deg2rad(60), 10, scale_koeff, sprite_sheet, dead_sprite,
+                    Creature(enemyX, enemyY, 0, deg2rad(60), 20, 100, 10, scale_koeff, sprite_sheet, dead_sprite,
                              steps_frame_number))
+            if level_map[enemyX, enemyY] == color2:
+                sprites.append(
+                    LaserCreature(enemyX, enemyY, 0, deg2rad(60), 40, 2000, (255, 100, 0, 255),
+                                  (255, 0, 0, 255), 10, scale_koeff, sprite_sheet, dead_sprite,
+                                  steps_frame_number))
     return sprites
 
 
@@ -518,15 +656,17 @@ def check_for_player(playerX, playerY, creatureX, creatureY, creatureAngle, crea
     hitPlayer = False
     if (abs(playerX - creatureX) ** 2 + abs(playerX - creatureX) ** 2) ** (1 / 2) < 6 * k:
         return True
-    for angle in range(int((creatureAngle - (creatureFOV / 2)) * 100), int((creatureAngle + (creatureFOV / 2)) * 100)):
-        angle /= 100
+    for x in range(0, 1000, int(k * 2)):
+        angle = (creatureAngle - creatureFOV / 2) + (x / 100) * creatureFOV
         EyeX = cos(angle)
         EyeY = sin(angle)
         hitWall = False
+        distanceToWall = 0
+        hitWall = False
         while distanceToWall < creatureViewDepth and not hitWall and not hitPlayer:
             distanceToWall += 0.1
-            RayPointX = int(creatureX + EyeX * distanceToWall)
-            RayPointY = int(creatureY + EyeY * distanceToWall)
+            RayPointX = int(creatureX + EyeX * distanceToWall) - 1
+            RayPointY = int(creatureY + EyeY * distanceToWall) - 1
             if RayPointX < 0 or RayPointX >= mapX or RayPointY < 0 or RayPointY >= mapY:
                 hitWall = True
             elif level_map[RayPointX][RayPointY] == (0, 0, 0, 255) or level_map[RayPointX][RayPointY] == (
@@ -537,6 +677,27 @@ def check_for_player(playerX, playerY, creatureX, creatureY, creatureAngle, crea
         if hitPlayer:
             break
     return hitPlayer
+
+
+@njit()
+def get_distance(level_map, mapX, mapY, angle, position, viewDepth, colors, coords):
+    EyeX = float(cos(angle))
+    EyeY = float(sin(angle))
+    distanceToWall = float(0)
+    hitWall = False
+    x, y = position
+    # print(2)
+    RayPointX, RayPointY = 0, 0
+    while distanceToWall < viewDepth and not hitWall:
+        distanceToWall += 0.1
+        RayPointX = int(x + EyeX * distanceToWall)
+        RayPointY = int(y + EyeY * distanceToWall)
+        if RayPointX <= 0 or RayPointX >= mapX - 1 or RayPointY <= 0 or RayPointY >= mapY - 1:
+            hitWall = True
+            distanceToWall = viewDepth
+        elif level_map[RayPointX][RayPointY] in colors or (RayPointX, RayPointY) in coords:
+            hitWall = True
+    return distanceToWall, RayPointX, RayPointY, hitWall
 
 
 def main(file, k, walls_texture, floor_textire, playerAngle):
@@ -566,7 +727,7 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
     pygame.mouse.set_visible(0)
     gun_i = 0
     gun_k = 0
-    fps = 40
+    fps = 100
     clock = pygame.time.Clock()
     clock2 = pygame.time.Clock()
     clock_en = pygame.time.Clock()
@@ -583,23 +744,38 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
 
     wall = pygame.surfarray.array3d(pygame.image.load(os.path.join('data', walls_texture)))
 
-    sprite_sheet = cut_sprite_sheet('test_sprites_list.png', 300, 400, 3)
-    dead_sprite = pygame.image.load(os.path.join('data', 'test sprite_dead.png'))
-    enemies = place_sprites(level_map, mapX, mapY, (255, 216, 0, 255), 5, sprite_sheet, dead_sprite, 3)
+    sprite_sheet = cut_sprite_sheet('wasp_sheet2.png', 400, 1001, 2)
+    dead_sprite = pygame.image.load(os.path.join('data', 'wasp_dead.png'))
+    enemies = place_sprites(level_map, mapX, mapY, (255, 216, 0, 255), (0, 255, 0, 255), 5, sprite_sheet, dead_sprite,
+                            2)
 
     frame = random.uniform(0, 0, (horizontalResolution, HalfOfVerticalResolution * 2, 3))
 
     move_koeff = k
 
     draw_floor_and_cellind = False
+    # print(0)
     level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
+    # print(1)
     pygame.event.set_grab(1)
     size = min(mapX, mapY)
     playerHealth = 100
 
+    comparizon_creature = LaserCreature(0, 0, 0, deg2rad(60), 40, 80, (255, 100, 0, 255),
+                                        (255, 0, 0, 255), 10, 0, sprite_sheet, dead_sprite, 0)
+    # print(type(comparizon_creature))
+    clear_events = []
+    # print(enemies)
+    enemies2 = enemies.copy()
+    for en in range(len(enemies)):
+        if type(enemies[en]) == type(comparizon_creature):
+            clear_events.append([pygame.USEREVENT + 2 + en, en])
+            # print(en)
+            # type(enemies[en])
     weapon = hands
     while True:
-        print(playerHealth)
+        draw.line((playerX, playerY, playerX, playerY), fill=(106, 0, 255, 255), width=1)
+        # print(playerHealth)
         cycle_timer = pygame.time.get_ticks() / 200
         y_gun = int(sin(gun_i) * gun_k)
         screen.fill((255, 255, 0))
@@ -643,6 +819,12 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
         enAngleDiff = 0
         clock_koeff_en = clock_en.tick() / 500
         # enemies_pos_list = []
+        for i in range(len(clear_events)):
+            if enemies2[clear_events[i][1]].get_laser_list:
+                pygame.time.set_timer(clear_events[i][0], 10)
+            else:
+                pygame.time.set_timer(clear_events[i][0], 0)
+        pygame.time.set_timer(laser_reload, 10)
         for en in range(len(enemies)):
             enx, eny = enemies[en].get_position()
             angle = numpy.arctan((eny - playerY) / (enx - playerX + 0.00001))
@@ -668,10 +850,11 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
             else:
                 enemies[en].set_distanceToPlayer(999)
             if enemies[en].get_health() > 0:
-                creatureAngle = enemies[en].get_angle()
-
-                playerHealth = enemies[en].ai(clock_koeff_en, level_map_list, mapX, mapY, playerX, playerY,
-                                              playerHealth, playerAngle)
+                # print(type(enemies[en]))
+                playerHealth, level_map = enemies[en].ai(clock_koeff_en, level_map_list, im, mapX, mapY, playerX,
+                                                         playerY, playerHealth)
+                # print(type(level_map))
+                level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
                 # enemies_pos_list.append(tuple(map(int, enemies[en].get_position())))
         enemies.sort(key=lambda enemy: enemy.get_distanceToPlayer())
         surface = draw_sprites(surface, enemies, scrY, scrX, cycle_timer, (100, 100), enAngleDiff)
@@ -680,8 +863,17 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
         screen.blit(surface, (0, 0))
 
         # end sprites
-
-        draw_lasers = islasers(level_map_list)
+        en_laser_map_color = laser.get_laser_map_color()
+        en_laser_color = laser.get_laser_color()
+        draw_lasers = False
+        draw_lasers1 = islasers(level_map_list, laser.get_laser_map_color())
+        for en in range(len(enemies)):
+            if type(enemies[en]) == type(comparizon_creature):
+                en_laser_map_color = enemies[en].get_laser_map_color()
+                en_laser_color = enemies[en].get_laser_color()
+                draw_lasers = islasers(level_map_list, enemies[en].get_laser_map_color())
+        if draw_lasers1:
+            draw_lasers = draw_lasers1
 
         if draw_lasers:
             for x in range(0, scrX, int(k * 2)):
@@ -690,27 +882,29 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
                 RayAngle = (playerAngle - playerFOVrad / 2) + (x / scrX) * playerFOVrad
                 EyeX = cos(RayAngle)
                 EyeY = sin(RayAngle)
-                while distanceToLaser < playerViewDepth and not hitLaser:
-                    distanceToLaser += 0.3
-                    RayPointX = int(playerX + EyeX * distanceToLaser)
-                    RayPointY = int(playerY + EyeY * distanceToLaser)
-                    if RayPointX < 0 or RayPointX >= mapX or RayPointY < 0 or RayPointY >= mapY or level_map[
-                        RayPointX, RayPointY] == (0, 0, 0, 255):
-                        break
-                    elif level_map[RayPointX, RayPointY] == laser.get_laser_map_color():
-                        hitLaser = True
-
+                laser_colors_on_map_list = (laser.get_laser_map_color(), en_laser_map_color)
+                distanceToLaser, RayPointX, RayPointY, hitLaser = get_distance(level_map_list, mapX, mapY, RayAngle,
+                                                                               (playerX, playerY), playerViewDepth,
+                                                                               laser_colors_on_map_list,
+                                                                               List([(-1, -1), (-1, -1)]))
                 if hitLaser:
-                    hitLaser = True
                     LaserHeight = (laser_width / distanceToLaser)
-                    if distanceToLaser == playerViewDepth:
+                    # print(RayPointX, RayPointY)
+                    if distanceToLaser >= playerViewDepth:
                         LaserHeight = 0
-                    rgb = laser.get_laser_color()
+                        # print(1)
+                    if level_map_list[RayPointX][RayPointY] == en_laser_map_color:
+                        rgb = en_laser_color
+                        # print(0)
+                    else:
+                        rgb = laser.get_laser_color()
+
                     r = int(rgb[0] - (rgb[0] * (distanceToLaser / playerViewDepth) ** 0.75))
                     g = int(rgb[1] - (rgb[1] * (distanceToLaser / playerViewDepth) ** 0.75))
                     b = int(rgb[2] - (rgb[2] * (distanceToLaser / playerViewDepth) ** 0.75))
-                    pygame.draw.line(screen, (r, g, b, 255), (x, scrY // 2 + int(LaserHeight / 2)),
-                                     (x, scrY // 2 - int(LaserHeight / 2)), width=k * 2)
+                    if LaserHeight:
+                        pygame.draw.line(screen, (r, g, b, 255), (x, scrY // 2 + int(LaserHeight / 2)),
+                                         (x, scrY // 2 - int(LaserHeight / 2)), width=k * 2)
 
         keys = pygame.key.get_pressed()
         clock_koeff = clock2.tick() / 500
@@ -722,6 +916,7 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
         else:
             gun_k = 5
         if keys[pygame.K_ESCAPE]:
+            im.save('en_lasers.png')
             pygame.quit()
             sys.exit()
         if keys[pygame.K_1]:
@@ -741,13 +936,15 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
                 sys.exit()
             if event.type == clear_lasers:
                 level_map = weapon.clear_laser(im)
-            # level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
+            for i in range(len(clear_events)):
+                if event.type == clear_events[i][0]:
+                    enemies2[clear_events[i][1]].clear_laser(im)
             if event.type == laser_reload:
                 weapon.reload()
             if event.type == pygame.MOUSEBUTTONDOWN and weapon.get_can_shoot():
                 # l_im = im.copy()
                 # print(f'playerAngle in main {playerAngle}')
-                level_map = weapon.fire(im, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY)
+                level_map = weapon.fire(im, level_map_list, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY)
                 level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
                 for en in range(len(enemies)):
                     en_pos = enemies[en].get_position()
