@@ -2,9 +2,9 @@ from random import randrange
 
 from PIL import Image, ImageDraw
 import pygame
-from numpy import sin, cos, tan, arctan, deg2rad, array, random
+from numpy import sin, cos, tan, deg2rad, random
 import numpy
-from numba import njit, jit
+from numba import njit
 from numba.typed import List
 import sys
 import os
@@ -33,15 +33,15 @@ class Weapon():
             self.reload_timer = 0
             level_map = map_image.load()
             draw = ImageDraw.Draw(map_image)
-            color_list = [(0, 0, 0, 255), (128, 128, 128, 255)]
+            color_list = [(0, 0, 0, 255), (128, 128, 128, 255), (127, 0, 55, 255)]
             coord_list = [playerX, playerY]
             d, RayPointX, RayPointY, hitWall = get_distance(level_map_list, mapX, mapY, playerAngle,
                                                             List(coord_list), 100, List(color_list),
                                                             List([(-1, -1), (-1, -1)]))
             laserX = playerX
             laserY = playerY
-            laserXEnd = RayPointX - sin(playerAngle)
-            laserYEnd = RayPointY - cos(playerAngle)
+            laserXEnd = RayPointX - cos(playerAngle) * k
+            laserYEnd = RayPointY - sin(playerAngle) * k
             draw.line((laserX, laserY, laserXEnd, laserYEnd), fill=self.laser_color_on_map, width=1)
             # print(f'playerAngle in fire {playerAngle}, laser coords: {(laserX, laserY, laserXEnd, laserYEnd)}')
             self.lasers_list.append([laserX, laserY, laserXEnd, laserYEnd, playerAngle])
@@ -53,10 +53,12 @@ class Weapon():
     def clear_laser(self, map_image):
         draw = ImageDraw.Draw(map_image)
         level_map = map_image.load()
-        if self.lasers_list:
-            draw.line((self.lasers_list[0][0], self.lasers_list[0][1], self.lasers_list[0][2], self.lasers_list[0][3]),
-                      fill=(255, 255, 255, 255), width=1)
-            self.lasers_list.remove(self.lasers_list[0])
+        for i in range(len(self.lasers_list)):
+            if self.lasers_list:
+                draw.line(
+                    (self.lasers_list[i][0], self.lasers_list[i][1], self.lasers_list[i][2], self.lasers_list[i][3]),
+                    fill=(255, 255, 255, 255), width=1)
+                self.lasers_list.remove(self.lasers_list[i])
         return level_map
 
     def get_laser_list(self):
@@ -367,15 +369,15 @@ class LaserCreature():
             self.reload_timer = 0
             d = 50
             draw = ImageDraw.Draw(map_image)
-            color_list = [(0, 0, 0, 255), (128, 128, 128, 255)]
+            color_list = [(0, 0, 0, 255), (128, 128, 128, 255), (127, 0, 55, 255)]
             coord_list = [self.creatureX, self.creatureY]
             d, RayPointX, RayPointY, hitWall = get_distance(level_map_list, mapX, mapY, self.creatureAngle,
                                                             List(coord_list), 100, List(color_list),
                                                             List([(-1, -1), (-1, -1)]))
             laserX = self.creatureX
             laserY = self.creatureY
-            laserXEnd = RayPointX - sin(self.creatureAngle)
-            laserYEnd = RayPointY - cos(self.creatureAngle)
+            laserXEnd = RayPointX - cos(self.creatureAngle) * k
+            laserYEnd = RayPointY - sin(self.creatureAngle) * k
             draw.line((laserX, laserY, laserXEnd, laserYEnd), fill=self.laser_color_on_map, width=1)
             self.lasers_list.append([laserX, laserY, laserXEnd, laserYEnd, self.creatureAngle])
         return level_map
@@ -459,6 +461,61 @@ class LaserCreature():
         return self.lasers_list
 
 
+class Button():
+    def __init__(self, buttonX, buttonY, color):
+        self.buttonX = buttonX
+        self.buttonY = buttonY
+        self.color = color
+        self.orientation = color[0]
+        self.door_length = color[1]
+        self.when_open = color[2]
+        self.number = color[3]
+        self.activated = False
+
+    def open(self, playerX, playerY, map_image, k, enemies, button_list):
+        level_map = map_image.load()
+        draw = ImageDraw.Draw(map_image)
+        dist = ((playerX - self.buttonX) ** 2 + (playerY - self.buttonY) ** 2) ** 0.5
+        can_be_activated = True
+        if self.when_open == 0:
+            for en in enemies:
+                if en.get_health() > 0:
+                    can_be_activated = False
+        elif 0 < self.when_open < 255:
+            can_be_activated = False
+            for btn in button_list:
+                if btn.number == self.when_open:
+                    if btn.isActive():
+                        can_be_activated = True
+        if dist < k and can_be_activated:
+            self.activated = True
+            if self.orientation == 1:
+                sx = self.buttonX - 1
+                sy = self.buttonY
+                ex = self.buttonX - self.door_length
+                ey = self.buttonY
+            elif self.orientation == 2:
+                sx = self.buttonX
+                sy = self.buttonY - 1
+                ex = self.buttonX
+                ey = self.buttonY - self.door_length
+            elif self.orientation == 3:
+                sx = self.buttonX + 1
+                sy = self.buttonY
+                ex = self.buttonX + self.door_length
+                ey = self.buttonY
+            else:
+                sx = self.buttonX
+                sy = self.buttonY + 1
+                ex = self.buttonX
+                ey = self.buttonY + self.door_length
+            draw.line((sx, sy, ex, ey), fill=(255, 255, 255, 255), width=1)
+        return level_map
+
+    def isActive(self):
+        return self.activated
+
+
 @njit()
 def angle_to_player(playerX, playerY, creatureX, creatureY):
     angle = numpy.arctan((creatureY - playerY) / (creatureX - playerX))
@@ -476,23 +533,27 @@ def PixelAccess_to_list(PixelAccess, size):
 
 @njit()
 def new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, playerAngle, level_map, size, mod,
-              floor, wall, k, frame):
+              floor, wall, buttons, k, frame):
     for i in range(horizontalResolution):
         playerAngle_i = playerAngle + numpy.deg2rad(i / mod - 30)
         delta_x, delta_y = numpy.cos(playerAngle_i), numpy.sin(playerAngle_i)
         delta_cos = numpy.cos(numpy.deg2rad(i / mod - 30))
 
         x, y = playerX, playerY
-        while level_map[int(x) % size][int(y) % size] != (0, 0, 0, 255):
+        while level_map[int(x) % size][int(y) % size] != (0, 0, 0, 255) and level_map[int(x) % size][int(y) % size][
+            3] == 255:
             x += 0.02 * delta_x * k
             y += 0.02 * delta_y * k
+        texture = wall
+        if level_map[int(x) % size][int(y) % size][3] < 255:
+            texture = buttons
 
         n = abs((x - playerX) / delta_x)
         WallHeight = int((HalfOfVerticalResolution * k) / (n * delta_cos + 0.0001))
-        xx = int(x * 2 % 1 * 100)
+        xx = int(x % 1 * (100 // k))
 
-        if x % 1 < 0.02 or x % 1 > 0.98:
-            xx = int(y * 2 % 1 * 100)
+        if x % 1 < 0.02 or x % 1 > (0.98 / k):
+            xx = int(y % 1 * (100 // k))
 
         yy = numpy.linspace(0, 99, WallHeight * 2) % 99
         shade = WallHeight / HalfOfVerticalResolution
@@ -502,7 +563,7 @@ def new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, 
 
         for pixels in range(WallHeight * 2):
             if 0 < HalfOfVerticalResolution - WallHeight + pixels < 2 * HalfOfVerticalResolution:
-                frame[i, HalfOfVerticalResolution - WallHeight + pixels] = shade * wall[xx][
+                frame[i, HalfOfVerticalResolution - WallHeight + pixels] = shade * texture[xx][
                     int(yy[pixels])] / 255
 
         for j in range(HalfOfVerticalResolution - WallHeight):
@@ -695,13 +756,20 @@ def get_distance(level_map, mapX, mapY, angle, position, viewDepth, colors, coor
         if RayPointX <= 0 or RayPointX >= mapX - 1 or RayPointY <= 0 or RayPointY >= mapY - 1:
             hitWall = True
             distanceToWall = viewDepth
-        elif level_map[RayPointX][RayPointY] in colors or (RayPointX, RayPointY) in coords:
+        elif level_map[RayPointX][RayPointY] in colors or (RayPointX, RayPointY) in coords or \
+                level_map[RayPointX][RayPointY][3] < 255:
             hitWall = True
     return distanceToWall, RayPointX, RayPointY, hitWall
 
 
-def main(file, k, walls_texture, floor_textire, playerAngle):
+def main(file, k, playerAngle):
     pygame.init()
+
+    walls_texture = 'дерево.png'
+    floor_textire = 'дерево.png'
+    buttons_texture = 'button.png'
+    buttons_background_texture = 'button_background.png'
+
     scrX = 1000
     scrY = 700
     screen = pygame.display.set_mode((scrX, scrY))
@@ -711,11 +779,14 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
     level_map = im.load()
     playerX = 1
     playerY = 1
+    button_list = []
     for i in range(mapX):
         for j in range(mapY):
             if level_map[i, j] == (255, 0, 0, 255):
                 playerX = i
                 playerY = j
+            if level_map[i, j][3] < 255:
+                button_list.append(Button(i, j, level_map[i, j]))
     # playerAngle = 0
     playerFOV = 60
     playerFOVrad = deg2rad(playerFOV)
@@ -734,15 +805,24 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
     laser = Weapon('laser', 400, 20, (255, 106, 0, 255), (255, 0, 0, 255), 'laser_gun_no_shoot5.1.png',
                    'laser_gun_shoot6.png', 'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png',
                    'laser_gun_no_shoot5.3.png', 'laser_gun_no_shoot5.4.png')
-    hands = HandHitWeapon('hands', 40, 5, (0, 0, 255, 255), 'spider_hands_no_hit.png',
-                          'spider_hands_hit.png', 'spider_hands_no_hit.png', 'spider_hands_no_hit.png')
+    hands = HandHitWeapon('hands', 40, 5, (0, 0, 255, 255), 'spider_hands_no_hit2.png',
+                          'spider_hands_hit2.png', 'spider_hands_no_hit2.png', 'spider_hands_no_hit2.png')
 
     horizontalResolution = 120
     HalfOfVerticalResolution = 100
     mod = horizontalResolution // playerFOV
-    floor = pygame.surfarray.array3d(pygame.image.load(os.path.join('data', floor_textire)))
 
+    floor = pygame.surfarray.array3d(pygame.image.load(os.path.join('data', floor_textire)))
     wall = pygame.surfarray.array3d(pygame.image.load(os.path.join('data', walls_texture)))
+
+    buttons_surf = pygame.image.load(os.path.join('data', buttons_texture))
+    buttons_surf = pygame.transform.scale(buttons_surf, (100 // k, 100 // k))
+    buttons_texture = pygame.image.load(os.path.join('data', buttons_background_texture))
+    buttons_texture = buttons_texture.convert_alpha()
+    buttons_texture = pygame.transform.scale(buttons_texture, (100 // k, 100))
+    buttons_texture.blit(buttons_surf, (0, 50 - (100 // (k * 2))))
+
+    buttons = pygame.surfarray.array3d(buttons_texture)
 
     sprite_sheet = cut_sprite_sheet('wasp_sheet2.png', 400, 1001, 2)
     dead_sprite = pygame.image.load(os.path.join('data', 'wasp_dead.png'))
@@ -759,7 +839,7 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
     # print(1)
     pygame.event.set_grab(1)
     size = min(mapX, mapY)
-    playerHealth = 100
+    playerHealth = 1000
 
     comparizon_creature = LaserCreature(0, 0, 0, deg2rad(60), 40, 80, (255, 100, 0, 255),
                                         (255, 0, 0, 255), 10, 0, sprite_sheet, dead_sprite, 0)
@@ -810,7 +890,7 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
             screen.blit(surface, (0, 0))
         # print('start')
         frame = new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, playerAngle, level_map_list,
-                          size, mod, floor, wall, k, frame)
+                          size, mod, floor, wall, buttons, k, frame)
         # print('done')
         surface = pygame.surfarray.make_surface(frame * 255)
         surface = pygame.transform.scale(surface, (scrX, scrY))
@@ -882,11 +962,16 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
                 RayAngle = (playerAngle - playerFOVrad / 2) + (x / scrX) * playerFOVrad
                 EyeX = cos(RayAngle)
                 EyeY = sin(RayAngle)
-                laser_colors_on_map_list = (laser.get_laser_map_color(), en_laser_map_color)
-                distanceToLaser, RayPointX, RayPointY, hitLaser = get_distance(level_map_list, mapX, mapY, RayAngle,
-                                                                               (playerX, playerY), playerViewDepth,
-                                                                               laser_colors_on_map_list,
-                                                                               List([(-1, -1), (-1, -1)]))
+                while distanceToLaser < playerViewDepth and not hitLaser:
+                    distanceToLaser += 0.3
+                    RayPointX = int(playerX + EyeX * distanceToLaser)
+                    RayPointY = int(playerY + EyeY * distanceToLaser)
+                    if RayPointX < 0 or RayPointX >= mapX or RayPointY < 0 or RayPointY >= mapY or level_map[
+                        RayPointX, RayPointY] == (0, 0, 0, 255):
+                        break
+                    elif level_map[RayPointX, RayPointY] == laser.get_laser_map_color() or level_map[
+                        RayPointX, RayPointY] == en_laser_map_color:
+                        hitLaser = True
                 if hitLaser:
                     LaserHeight = (laser_width / distanceToLaser)
                     # print(RayPointX, RayPointY)
@@ -916,18 +1001,15 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
         else:
             gun_k = 5
         if keys[pygame.K_ESCAPE]:
-            im.save('en_lasers.png')
-            pygame.quit()
-            sys.exit()
+            return False, screen
         if keys[pygame.K_1]:
             weapon = hands
         if keys[pygame.K_2]:
             weapon = laser
-        if keys[pygame.K_q]:
-            if draw_floor_and_cellind:
-                draw_floor_and_cellind = False
-            else:
-                draw_floor_and_cellind = True
+        if keys[pygame.K_e]:
+            for el in button_list:
+                level_map = el.open(playerX, playerY, im, k, enemies, button_list)
+            level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
         p_mouse = pygame.mouse.get_rel()
         playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, .2)
         for event in pygame.event.get():
@@ -955,20 +1037,28 @@ def main(file, k, walls_texture, floor_textire, playerAngle):
                                 # print(level_map[en_pos[0] + xx, en_pos[1] + yy])
                                 if level_map[en_pos[0] + xx, en_pos[1] + yy] == weapon.get_laser_map_color():
                                     enemies[en].set_health(enemies[en].get_health() - weapon.get_damage())
-                                draw.line((en_pos[0] + xx, en_pos[1] + yy, en_pos[0] + xx, en_pos[1] + yy),
-                                          fill=(255, 0, 106, 255), width=1)
+                                # draw.line((en_pos[0] + xx, en_pos[1] + yy, en_pos[0] + xx, en_pos[1] + yy),
+                                #           fill=(255, 0, 106, 255), width=1)
 
-                draw.line((playerX, playerY, playerX, playerY),
-                          fill=(255, 106, 106, 255), width=1)
-                # im.save('after_shot.png')
-                #
-                # light_from_laser = pygame.image.load(os.path.join('data', 'laser_shoot_light.png'))
-                # screen.blit(light_from_laser, (0, 0))
+                # draw.line((playerX, playerY, playerX, playerY),
+                #           fill=(255, 106, 106, 255), width=1)
+        gun_image = pygame.image.load(os.path.join('data', 'health.png'))
+        screen.blit(gun_image, (0, 0))
+        if playerHealth > 0:
+            pygame.draw.line(screen, (255, 0, 0, 255), (60, 20), (60 + (playerHealth // 10), 20), width=k * 2)
         gun_image = pygame.image.load(os.path.join('data', weapon.get_model()))
         screen.blit(gun_image, (-30, y_gun + 5))
-        cross_image = pygame.image.load(os.path.join('data', 'прицел.png'))
+        col = screen.get_at((530, 350))
+        m_col = max(col[0], col[1], col[2])
+        if m_col > 128:
+            cross_image = pygame.image.load(os.path.join('data', 'прицел.png'))
+        else:
+            cross_image = pygame.image.load(os.path.join('data', 'прицел_w.png'))
         screen.blit(cross_image, (-30, 0))
-
+        if playerHealth < 0:
+            return False, screen
+        if level_map[playerX, playerY] == (127, 0, 55, 255):
+            return True, screen
         clock.tick(fps)
         pygame.display.update()
         pygame.display.flip()
@@ -982,7 +1072,33 @@ if __name__ == '__main__':
     # k = 20
     # file = 'map.v15.png'
     k = 5
-    file = 'lvl1.png'
-    walls_texture = 'дерево.png'
-    floor_textire = 'дерево.png'
-    main(file, k, walls_texture, floor_textire, deg2rad(270))
+    file = 'lvl1.3.png'
+    pygame.init()
+    screen = pygame.display.set_mode((1000, 700))
+    result, surf = main(file, k, deg2rad(270))
+    running = True
+    screen.blit(surf, (0, 0))
+    while running:
+        if result:
+            font = pygame.font.Font(None, 75)
+            text = font.render("Вы выиграли!", True, (0, 255, 100))
+            text_x = 1000 // 2 - text.get_width() // 2
+            text_y = 700 // 2 - text.get_height() // 2
+            screen.blit(text, (text_x, text_y))
+        else:
+            font = pygame.font.Font(None, 75)
+            text = font.render("Вы проиграли!", True, (255, 100, 100))
+            text_x = 1000 // 2 - text.get_width() // 2
+            text_y = 700 // 2 - text.get_height() // 2
+            screen.blit(text, (text_x, text_y))
+        font = pygame.font.Font(None, 40)
+        text = font.render("Нажмите любую клавишу.", True, (100, 255, 100))
+        text_x = 1000 // 2 - text.get_width() // 2
+        text_y = 700 // 2 - text.get_height() // 2 + 40
+        screen.blit(text, (text_x, text_y))
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                running = False
+        pygame.display.update()
+    pygame.quit()
+    sys.exit()
