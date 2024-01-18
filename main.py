@@ -12,7 +12,7 @@ import os
 
 class Weapon():
     def __init__(self, name, max_reload_timer_value, damage, laser_color_on_map, laser_color, model_no_shoot,
-                 model_shoot, *reload_models):
+                 model_shoot, max_ammo, start_ammo, *reload_models):
         self.name = name
         self.model_no_shoot = model_no_shoot
         self.model_shoot = model_shoot
@@ -27,11 +27,25 @@ class Weapon():
         self.clock = pygame.time.Clock()
         self.laser_color_on_map = laser_color_on_map
         self.laser_color = laser_color
+        self.max_ammo = max_ammo
+        self.ammo = start_ammo
+        if not (self.ammo is None):
+            if self.ammo <= 0:
+                self.isammo = False
+            else:
+                self.isammo = True
+        else:
+            self.isammo = True
 
     def fire(self, map_image, level_map_list, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY):
-        if self.can_shoot:
+        level_map = map_image.load()
+        if not (self.ammo is None):
+            if self.ammo <= 0:
+                self.isammo = False
+            else:
+                self.isammo = True
+        if self.can_shoot and self.isammo:
             self.reload_timer = 0
-            level_map = map_image.load()
             draw = ImageDraw.Draw(map_image)
             color_list = [(0, 0, 0, 255), (128, 128, 128, 255), (127, 0, 55, 255)]
             coord_list = [playerX, playerY]
@@ -46,9 +60,11 @@ class Weapon():
             # print(f'playerAngle in fire {playerAngle}, laser coords: {(laserX, laserY, laserXEnd, laserYEnd)}')
             self.lasers_list.append([laserX, laserY, laserXEnd, laserYEnd, playerAngle])
             self.can_shoot = False
+            if not (self.max_ammo is None or self.ammo is None):
+                self.ammo -= 1
             self.set_model(self.model_shoot)
             self.clock.tick()
-            return level_map
+        return level_map
 
     def clear_laser(self, map_image):
         draw = ImageDraw.Draw(map_image)
@@ -65,19 +81,29 @@ class Weapon():
         return self.lasers_list
 
     def reload(self):
-        self.reload_timer += 1
-        j = 0
-        d = self.max_reload_timer_value // len(self.reload_models)
-        if self.clock.tick() > 10 and self.reload_timer < d and not self.can_shoot:
+        if not (self.ammo is None):
+            if self.ammo <= 0:
+                self.isammo = False
+            else:
+                self.isammo = True
+        else:
+            self.isammo = True
+        if self.isammo:
+            self.reload_timer += 1
+            j = 0
+            d = self.max_reload_timer_value // len(self.reload_models)
+            if self.clock.tick() > 10 and self.reload_timer < d and not self.can_shoot:
+                self.set_model(self.reload_models[1])
+            if self.reload_timer > 1:
+                for i in range(0, self.max_reload_timer_value, d):
+                    if self.reload_timer in [i - d // 2, i, i + d // 2]:
+                        self.set_model(self.reload_models[j])
+                    j += 1
+                if self.reload_timer >= self.max_reload_timer_value:
+                    self.set_model(self.model_no_shoot)
+                    self.can_shoot = True
+        else:
             self.set_model(self.reload_models[1])
-        if self.reload_timer > 1:
-            for i in range(0, self.max_reload_timer_value, d):
-                if self.reload_timer in [i - d // 2, i, i + d // 2]:
-                    self.set_model(self.reload_models[j])
-                j += 1
-            if self.reload_timer >= self.max_reload_timer_value:
-                self.set_model(self.model_no_shoot)
-                self.can_shoot = True
 
     def get_can_shoot(self):
         return self.can_shoot
@@ -105,6 +131,25 @@ class Weapon():
 
     def get_damage(self):
         return self.damage
+
+    def get_ammo(self):
+        return self.ammo
+
+    def get_max_ammo(self):
+        return self.max_ammo
+
+    def set_ammo(self, new_ammo):
+        self.ammo = new_ammo
+        if not (self.ammo is None):
+            if self.ammo <= 0:
+                self.isammo = False
+            else:
+                self.isammo = True
+
+    def is_ammmo_weapon(self):
+        if self.ammo is None:
+            return False
+        return True
 
 
 class HandHitWeapon():
@@ -144,10 +189,11 @@ class HandHitWeapon():
     def clear_laser(self, map_image):
         draw = ImageDraw.Draw(map_image)
         level_map = map_image.load()
-        if self.hits_list:
-            draw.line((self.hits_list[0][0], self.hits_list[0][1], self.hits_list[0][2], self.hits_list[0][3]),
-                      fill=(255, 255, 255, 255), width=1)
-            self.hits_list.remove(self.hits_list[0])
+        # for i in range(len(self.hits_list)):
+        #     if self.hits_list:
+        #         draw.line((self.hits_list[i][0], self.hits_list[i][1], self.hits_list[i][2], self.hits_list[i][3]),
+        #                   fill=(255, 255, 255, 255), width=1)
+        #         self.hits_list.remove(self.hits_list[i])
         return level_map
 
     def get_laser_list(self):
@@ -193,6 +239,9 @@ class HandHitWeapon():
     def get_damage(self):
         return self.damage
 
+    def is_ammmo_weapon(self):
+        return False
+
 
 class Creature():
     def __init__(self, creatureX, creatureY, creatureAngle, creatureFOV, damage, reload_time, health, scale,
@@ -214,6 +263,7 @@ class Creature():
         self.reload_timer = 0
         self.damage = damage
         self.reload_time = reload_time
+        self.ammo_for_player = 5
 
     def get_scale(self):
         return self.scale
@@ -301,6 +351,12 @@ class Creature():
     def get_creatureFOV(self):
         return self.creatureFOV
 
+    def get_ammo_for_player(self):
+        return self.ammo_for_player
+
+    def set_ammo_for_player(self, new_ammo):
+        self.ammo_for_player = new_ammo
+
 
 class LaserCreature():
     def __init__(self, creatureX, creatureY, creatureAngle, creatureFOV, damage, reload_time, laser_color_on_map,
@@ -324,6 +380,7 @@ class LaserCreature():
         self.laser_color = laser_color
         self.damage = damage
         self.reload_time = reload_time
+        self.ammo_for_player = 5
 
     def get_scale(self):
         return self.scale
@@ -460,6 +517,86 @@ class LaserCreature():
     def get_laser_list(self):
         return self.lasers_list
 
+    def get_ammo_for_player(self):
+        return self.ammo_for_player
+
+    def set_ammo_for_player(self, new_ammo):
+        self.ammo_for_player = new_ammo
+
+
+class Spider():
+    def __init__(self, spiderX, spiderY, spiderAngle, scale, sprite_sheet, steps_frame_number, text_list,
+                 button_number, give_gun, weapon_list, gun=None):
+        self.spiderX = spiderX
+        self.spiderY = spiderY
+        self.spiderAngle = spiderAngle
+        self.angleDifference = numpy.pi
+        self.distanceToPlayer = 999
+        self.scale = scale
+        self.sprite_sheet = sprite_sheet
+        self.steps_frame_number = steps_frame_number
+        self.text_list = text_list
+        self.button_number = button_number
+        self.give_gun = give_gun
+        self.weapon_list = weapon_list
+        self.gun = gun
+
+    def get_scale(self):
+        return self.scale
+
+    def get_position(self):
+        return self.spiderX, self.spiderY
+
+    def get_angle(self):
+        return self.spiderAngle
+
+    def set_angleDifference(self, newAngleDifference):
+        self.angleDifference = newAngleDifference
+
+    def set_distanceToPlayer(self, newDistanceToPlayer):
+        self.distanceToPlayer = newDistanceToPlayer
+
+    def get_angleDifference(self):
+        return self.angleDifference
+
+    def get_distanceToPlayer(self):
+        return self.distanceToPlayer
+
+    def get_sprites(self):
+        return self.sprite_sheet
+
+    def get_steps_frame_number(self):
+        return self.steps_frame_number
+
+    def talk(self, playerX, playerY, button_list, k, screen):
+        dist = ((playerX - self.spiderX) ** 2 + (playerY - self.spiderY) ** 2) ** 0.5
+        can_talk = False
+        weapon_number = 0
+        if dist < k:
+            for btn in button_list:
+                if btn.number == self.button_number:
+                    if btn.isActive():
+                        can_talk = True
+            if can_talk:
+                for el in self.text_list:
+                    talk_in_process = True
+                    while talk_in_process:
+                        rect = pygame.Rect((0, 0, 1000, 50))
+                        screen.fill((64, 64, 64), rect)
+                        font = pygame.font.Font(None, 30)
+                        text = font.render(el, True, (255, 255, 255))
+                        screen.blit(text, (10, 10))
+                        for event in pygame.event.get():
+                            if event.type == pygame.KEYDOWN:
+                                if event.key == pygame.K_t:
+                                    talk_in_process = False
+                        pygame.display.update()
+                        pygame.display.flip()
+                if self.give_gun:
+                    self.weapon_list.append(self.gun)
+                    weapon_number = -1
+        return self.give_gun, self.weapon_list, weapon_number
+
 
 class Button():
     def __init__(self, buttonX, buttonY, color):
@@ -478,9 +615,15 @@ class Button():
         dist = ((playerX - self.buttonX) ** 2 + (playerY - self.buttonY) ** 2) ** 0.5
         can_be_activated = True
         if self.when_open == 0:
+            f = pygame.font.Font(None, 1)
+            s = f.render(".", True, (0, 0, 0))
+            comparizon_creature = LaserCreature(0, 0, 0, deg2rad(60), 40, 80, (255, 100, 0, 255),
+                                                (255, 0, 0, 255), 10, 0, s, s, 0)
+            comparizon_creature2 = Creature(0, 0, 0, deg2rad(60), 40, 80, 10, 0, s, s, 0)
             for en in enemies:
-                if en.get_health() > 0:
-                    can_be_activated = False
+                if type(en) in [type(comparizon_creature), type(comparizon_creature2)]:
+                    if en.get_health() > 0:
+                        can_be_activated = False
         elif 0 < self.when_open < 255:
             can_be_activated = False
             for btn in button_list:
@@ -668,29 +811,46 @@ def cut_sprite_sheet(file_name, sheetX, sheetY, steps_frame_number):
     return sprites
 
 
-def place_sprites(level_map, mapX, mapY, color1, color2, scale_koeff, sprite_sheet, dead_sprite, steps_frame_number):
+def place_sprites(level_map, mapX, mapY, color1, color2, color3, scale_koeff, sprite_sheet_wasp, dead_sprite_wasp,
+                  sprite_sheet_scorpion, dead_sprite_scorpion, sprite_sheet_spider, steps_frame_number_wasp,
+                  steps_frame_number_scorpion, steps_frame_number_spider, text_list, button_number, give_gun,
+                  weapon_list, gun=None):
     sprites = []
     for enemyX in range(mapX):
         for enemyY in range(mapY):
             if level_map[enemyX, enemyY] == color1:
                 sprites.append(
-                    Creature(enemyX, enemyY, 0, deg2rad(60), 20, 100, 10, scale_koeff, sprite_sheet, dead_sprite,
-                             steps_frame_number))
+                    Creature(enemyX, enemyY, 0, deg2rad(60), 20, 100, 10, scale_koeff, sprite_sheet_wasp,
+                             dead_sprite_wasp,
+                             steps_frame_number_wasp))
             if level_map[enemyX, enemyY] == color2:
                 sprites.append(
                     LaserCreature(enemyX, enemyY, 0, deg2rad(60), 40, 2000, (255, 100, 0, 255),
-                                  (255, 0, 0, 255), 10, scale_koeff, sprite_sheet, dead_sprite,
-                                  steps_frame_number))
+                                  (255, 0, 0, 255), 10, scale_koeff, sprite_sheet_scorpion, dead_sprite_scorpion,
+                                  steps_frame_number_scorpion))
+            if level_map[enemyX, enemyY] == color3:
+                sprites.append(
+                    Spider(enemyX, enemyY, 0, scale_koeff, sprite_sheet_spider, steps_frame_number_spider, text_list,
+                           button_number, give_gun, weapon_list, gun))
     return sprites
 
 
 def draw_sprites(surface, enemies, scrY, scrX, cycle_timer, sprite_img_size, enAngleDiff):
+    f = pygame.font.Font(None, 1)
+    s = f.render(".", True, (0, 0, 0))
+    comparizon_creature = LaserCreature(0, 0, 0, deg2rad(60), 40, 80, (255, 100, 0, 255),
+                                        (255, 0, 0, 255), 10, 0, s, s, 0)
+    comparizon_creature2 = Creature(0, 0, 0, deg2rad(60), 40, 80, 10, 0, s, s, 0)
     for en in range(len(enemies)):
-        if enemies[en].get_health() > 0:
-            cycle = int(cycle_timer) % enemies[en].get_steps_frame_number()
+        # print(type(enemies[en]))
+        if type(enemies[en]) in [type(comparizon_creature), type(comparizon_creature2)]:
+            if enemies[en].get_health() > 0:
+                cycle = int(cycle_timer) % enemies[en].get_steps_frame_number()
+            else:
+                cycle = 0
         else:
-            cycle = 0
-            enAngleDiff = 0
+            cycle = int(cycle_timer) % enemies[en].get_steps_frame_number()
+        enAngleDiff = 0
         sprite_sheet = enemies[en].get_sprites()
         sprites_scaling = enemies[en].get_scale()
         distance = enemies[en].get_distanceToPlayer()
@@ -704,7 +864,6 @@ def draw_sprites(surface, enemies, scrY, scrX, cycle_timer, sprite_img_size, enA
         horizontal = (scrX // 2) - scrX * sin(enemies[en].get_angleDifference())
         sprite_im = pygame.transform.scale(sprite_sheet[cycle][int(enAngleDiff)],
                                            (sprite_size[0] * scaling, sprite_size[1] * scaling))
-        # print(horizontal, vertical, '|', surface.get_size(), "|", scrX, scrY)
         surface.blit(sprite_im,
                      (horizontal - (sprite_size[0] * scaling) // 2, vertical - (sprite_size[1] * scaling)))
     return surface
@@ -762,7 +921,7 @@ def get_distance(level_map, mapX, mapY, angle, position, viewDepth, colors, coor
     return distanceToWall, RayPointX, RayPointY, hitWall
 
 
-def main(file, k, playerAngle):
+def main(file, k, playerAngle, weapon_list, gun, laser):
     pygame.init()
 
     walls_texture = 'дерево.png'
@@ -802,11 +961,6 @@ def main(file, k, playerAngle):
     clock = pygame.time.Clock()
     clock2 = pygame.time.Clock()
     clock_en = pygame.time.Clock()
-    laser = Weapon('laser', 400, 20, (255, 106, 0, 255), (255, 0, 0, 255), 'laser_gun_no_shoot5.1.png',
-                   'laser_gun_shoot6.png', 'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png',
-                   'laser_gun_no_shoot5.3.png', 'laser_gun_no_shoot5.4.png')
-    hands = HandHitWeapon('hands', 40, 5, (0, 0, 255, 255), 'spider_hands_no_hit2.png',
-                          'spider_hands_hit2.png', 'spider_hands_no_hit2.png', 'spider_hands_no_hit2.png')
 
     horizontalResolution = 120
     HalfOfVerticalResolution = 100
@@ -824,10 +978,14 @@ def main(file, k, playerAngle):
 
     buttons = pygame.surfarray.array3d(buttons_texture)
 
+    # weapon_list = [hands]  # , gun, laser
+
     sprite_sheet = cut_sprite_sheet('wasp_sheet2.png', 400, 1001, 2)
     dead_sprite = pygame.image.load(os.path.join('data', 'wasp_dead.png'))
-    enemies = place_sprites(level_map, mapX, mapY, (255, 216, 0, 255), (0, 255, 0, 255), 5, sprite_sheet, dead_sprite,
-                            2)
+    enemies = place_sprites(level_map, mapX, mapY, (255, 216, 0, 255), (0, 255, 0, 255), (0, 255, 255, 255), 5,
+                            sprite_sheet, dead_sprite,
+                            sprite_sheet, dead_sprite, sprite_sheet, 2, 2, 2, ['Spider', 'Wasp'], 100, True,
+                            weapon_list, gun)
 
     frame = random.uniform(0, 0, (horizontalResolution, HalfOfVerticalResolution * 2, 3))
 
@@ -843,6 +1001,7 @@ def main(file, k, playerAngle):
 
     comparizon_creature = LaserCreature(0, 0, 0, deg2rad(60), 40, 80, (255, 100, 0, 255),
                                         (255, 0, 0, 255), 10, 0, sprite_sheet, dead_sprite, 0)
+    comparizon_creature2 = Creature(0, 0, 0, deg2rad(60), 40, 80, 10, 0, sprite_sheet, dead_sprite, 0)
     # print(type(comparizon_creature))
     clear_events = []
     # print(enemies)
@@ -852,7 +1011,9 @@ def main(file, k, playerAngle):
             clear_events.append([pygame.USEREVENT + 2 + en, en])
             # print(en)
             # type(enemies[en])
-    weapon = hands
+    weapon = [0]
+
+    bullet_img = pygame.image.load(os.path.join('data', 'bullet_image.png'))
     while True:
         draw.line((playerX, playerY, playerX, playerY), fill=(106, 0, 255, 255), width=1)
         # print(playerHealth)
@@ -929,13 +1090,36 @@ def main(file, k, playerAngle):
                         enemies[en].set_distanceToPlayer(999)
             else:
                 enemies[en].set_distanceToPlayer(999)
-            if enemies[en].get_health() > 0:
-                # print(type(enemies[en]))
-                playerHealth, level_map = enemies[en].ai(clock_koeff_en, level_map_list, im, mapX, mapY, playerX,
-                                                         playerY, playerHealth)
-                # print(type(level_map))
-                level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
-                # enemies_pos_list.append(tuple(map(int, enemies[en].get_position())))
+            if type(enemies[en]) in [type(comparizon_creature), type(comparizon_creature2)]:
+                if enemies[en].get_health() > 0:
+                    playerHealth, level_map = enemies[en].ai(clock_koeff_en, level_map_list, im, mapX, mapY, playerX,
+                                                             playerY, playerHealth)
+                    level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
+
+                else:
+                    if int(playerX) == int(enemies[en].get_position()[0]) and int(playerY) == int(
+                            enemies[en].get_position()[1]):
+                        if type(enemies[en]) == type(comparizon_creature):
+                            have_laser = False
+                            for el in weapon_list:
+                                name = el.get_name()
+                                if name == 'laser':
+                                    have_laser = True
+                                    break
+                            if not have_laser:
+                                weapon_list.append(laser)
+                                weapon = weapon_list[-1]
+                        if weapon.is_ammmo_weapon():
+                            if enemies[en].get_ammo_for_player():
+                                if weapon.get_ammo() < weapon.get_max_ammo():
+                                    if enemies[en].get_ammo_for_player() > weapon.get_max_ammo() - weapon.get_ammo():
+                                        weapon.set_ammo(weapon.get_max_ammo())
+                                        enemies[en].set_ammo_for_player(
+                                            enemies[en].get_ammo_for_player() - (
+                                                    weapon.get_max_ammo() - weapon.get_ammo()))
+                                    else:
+                                        weapon.set_ammo(weapon.get_ammo() + enemies[en].get_ammo_for_player())
+                                        enemies[en].set_ammo_for_player(0)
         enemies.sort(key=lambda enemy: enemy.get_distanceToPlayer())
         surface = draw_sprites(surface, enemies, scrY, scrX, cycle_timer, (100, 100), enAngleDiff)
         # print(angle_difference, enx, eny, playerX, playerY)
@@ -1001,14 +1185,25 @@ def main(file, k, playerAngle):
         else:
             gun_k = 5
         if keys[pygame.K_ESCAPE]:
-            return False, screen
+            # im.save('after_esc.png')
+            return False, screen, weapon_list
         if keys[pygame.K_1]:
-            weapon = hands
+            weapon = weapon_list[0]
         if keys[pygame.K_2]:
-            weapon = laser
+            if len(weapon_list) > 1:
+                weapon = weapon_list[1]
+        if keys[pygame.K_3]:
+            if len(weapon_list) > 2:
+                weapon = weapon_list[2]
         if keys[pygame.K_e]:
             for el in button_list:
                 level_map = el.open(playerX, playerY, im, k, enemies, button_list)
+            for en in enemies:
+                if type(en) not in [type(comparizon_creature), type(comparizon_creature2)]:
+                    give, weap_l, weap_n = en.talk(playerX, playerY, button_list, k, screen)
+                    if give:
+                        weapon_list = weap_l
+                        weapon = weapon_list[weap_n]
             level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
         p_mouse = pygame.mouse.get_rel()
         playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, .2)
@@ -1029,16 +1224,20 @@ def main(file, k, playerAngle):
                 level_map = weapon.fire(im, level_map_list, playerAngle, playerViewDepth, playerX, playerY, mapX, mapY)
                 level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
                 for en in range(len(enemies)):
-                    en_pos = enemies[en].get_position()
-                    # print(enemies[en].get_health())
-                    for xx in [-1, 0, 1]:
-                        for yy in [-1, 0, 1]:
-                            if 0 <= en_pos[0] + xx < mapX and 0 <= en_pos[1] + yy < mapY:
-                                # print(level_map[en_pos[0] + xx, en_pos[1] + yy])
-                                if level_map[en_pos[0] + xx, en_pos[1] + yy] == weapon.get_laser_map_color():
-                                    enemies[en].set_health(enemies[en].get_health() - weapon.get_damage())
-                                # draw.line((en_pos[0] + xx, en_pos[1] + yy, en_pos[0] + xx, en_pos[1] + yy),
-                                #           fill=(255, 0, 106, 255), width=1)
+                    if type(enemies[en]) in [type(comparizon_creature), type(comparizon_creature2)]:
+                        en_pos = enemies[en].get_position()
+                        breaked = False
+                        # print(enemies[en].get_health())
+                        for xx in [-1, 0, 1]:
+                            for yy in [-1, 0, 1]:
+                                if 0 <= en_pos[0] + xx < mapX and 0 <= en_pos[1] + yy < mapY:
+                                    # print(level_map[en_pos[0] + xx, en_pos[1] + yy])
+                                    if level_map[en_pos[0] + xx, en_pos[1] + yy] == weapon.get_laser_map_color():
+                                        enemies[en].set_health(enemies[en].get_health() - weapon.get_damage())
+                                        breaked = True
+                                        break
+                            if breaked:
+                                break
 
                 # draw.line((playerX, playerY, playerX, playerY),
                 #           fill=(255, 106, 106, 255), width=1)
@@ -1055,10 +1254,18 @@ def main(file, k, playerAngle):
         else:
             cross_image = pygame.image.load(os.path.join('data', 'прицел_w.png'))
         screen.blit(cross_image, (-30, 0))
+
+        if weapon.is_ammmo_weapon():
+            # print(0)
+            ammo_font = pygame.font.Font(None, 40)
+            ammo_val = ammo_font.render(str(weapon.get_ammo()), True, (255, 170, 0))
+            screen.blit(bullet_img, (10, scrY - 200))
+            screen.blit(ammo_val, (50, scrY - 190))
+
         if playerHealth < 0:
-            return False, screen
+            return False, screen, weapon_list
         if level_map[playerX, playerY] == (127, 0, 55, 255):
-            return True, screen
+            return True, screen, weapon_list
         clock.tick(fps)
         pygame.display.update()
         pygame.display.flip()
@@ -1074,8 +1281,17 @@ if __name__ == '__main__':
     k = 5
     file = 'lvl1.3.png'
     pygame.init()
+    laser = Weapon('laser', 400, 20, (255, 106, 0, 255), (255, 0, 0, 255), 'laser_gun_no_shoot5.1.png',
+                   'laser_gun_shoot6.png', None, None, 'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png',
+                   'laser_gun_no_shoot5.3.png', 'laser_gun_no_shoot5.4.png')
+    gun = Weapon('gun', 100, 5, (255, 16, 0, 255), (0, 0, 0, 0), 'laser_gun_no_shoot5.1.png',
+                 'laser_gun_shoot6.png', 10, 10, 'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png',
+                 'laser_gun_no_shoot5.3.png', 'laser_gun_no_shoot5.4.png')
+    hands = HandHitWeapon('hands', 40, 5, (0, 0, 255, 255), 'spider_hands_no_hit2.png',
+                          'spider_hands_hit2.png', 'spider_hands_no_hit2.png', 'spider_hands_no_hit2.png')
     screen = pygame.display.set_mode((1000, 700))
-    result, surf = main(file, k, deg2rad(270))
+    weapon_list = [hands]
+    result, surf, weapon_list = main(file, k, deg2rad(270), weapon_list, gun, laser)
     running = True
     screen.blit(surf, (0, 0))
     while running:
