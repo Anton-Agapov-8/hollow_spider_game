@@ -74,7 +74,7 @@ class Weapon():
                 draw.line(
                     (self.lasers_list[i][0], self.lasers_list[i][1], self.lasers_list[i][2], self.lasers_list[i][3]),
                     fill=(255, 255, 255, 255), width=1)
-                self.lasers_list.remove(self.lasers_list[i])
+        self.lasers_list = []
         return level_map
 
     def get_laser_list(self):
