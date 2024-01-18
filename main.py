@@ -1011,7 +1011,7 @@ def main(file, k, playerAngle, weapon_list, gun, laser):
             clear_events.append([pygame.USEREVENT + 2 + en, en])
             # print(en)
             # type(enemies[en])
-    weapon = [0]
+    weapon = weapon_list[0]
 
     bullet_img = pygame.image.load(os.path.join('data', 'bullet_image.png'))
     while True:
