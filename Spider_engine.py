@@ -542,7 +542,7 @@ class LaserCreature():
 
 class Spider():
     def __init__(self, spiderX, spiderY, spiderAngle, scale, sprite_sheet, steps_frame_number, text_list,
-                 button_number, give_gun, weapon_list, gun=None):
+                 button_number, give_gun, gun=None):
         self.spiderX = spiderX
         self.spiderY = spiderY
         self.spiderAngle = spiderAngle
@@ -554,7 +554,6 @@ class Spider():
         self.text_list = text_list
         self.button_number = button_number
         self.give_gun = give_gun
-        self.weapon_list = weapon_list
         self.gun = gun
 
     def get_scale(self):
@@ -584,7 +583,7 @@ class Spider():
     def get_steps_frame_number(self):
         return self.steps_frame_number
 
-    def talk(self, playerX, playerY, button_list, k, screen):
+    def talk(self, playerX, playerY, button_list, k, screen, weapon_list):
         dist = ((playerX - self.spiderX) ** 2 + (playerY - self.spiderY) ** 2) ** 0.5
         can_talk = False
         weapon_number = 0
@@ -612,9 +611,9 @@ class Spider():
                         pygame.display.update()
                         pygame.display.flip()
                 if self.give_gun:
-                    self.weapon_list.append(self.gun)
+                    weapon_list.append(self.gun)
                     weapon_number = -1
-        return self.give_gun, self.weapon_list, weapon_number
+        return self.give_gun, weapon_list, weapon_number
 
 
 class Button():
@@ -745,7 +744,7 @@ def new_frame(horizontalResolution, HalfOfVerticalResolution, playerX, playerY, 
 @njit()
 def collision(x, y, playerX, playerY, move_koeff, level_map, mapX, mapY, collision_colors):
     breakReason = 0
-    for d in range(1, int(move_koeff * 50)):
+    for d in range(0, int(move_koeff * 50)):
         d /= 50
         if x - d <= 0 or y - d <= 0 or x + d >= mapX - 1 or y + d >= mapY - 1 or playerX - d <= 0 or playerY - d <= 0 or \
                 playerX + d >= mapX - 1 or playerY + d >= mapY - 1:
@@ -845,7 +844,7 @@ def cut_sprite_sheet(file_name, sheetX, sheetY, steps_frame_number):
 def place_sprites(level_map, mapX, mapY, color1, color1_2, color2, color3, scale_koeff1, scale_koeff2, scale_koeff3,
                   sprite_sheet_wasp, dead_sprite_wasp, sprite_sheet_wasp2, dead_sprite_wasp2, sprite_sheet_scorpion,
                   dead_sprite_scorpion, sprite_sheet_spider, steps_frame_number_wasp, steps_frame_number_scorpion,
-                  steps_frame_number_spider, text_list, button_number, give_gun, weapon_list, k, gun=None):
+                  steps_frame_number_spider, text_list, button_number, give_gun, k, gun=None):
     sprites = []
     for enemyX in range(mapX):
         for enemyY in range(mapY):
@@ -867,7 +866,7 @@ def place_sprites(level_map, mapX, mapY, color1, color1_2, color2, color3, scale
             if level_map[enemyX, enemyY] == color3:
                 sprites.append(
                     Spider(enemyX, enemyY, deg2rad(90), scale_koeff3, sprite_sheet_spider, steps_frame_number_spider,
-                           text_list, button_number, give_gun, weapon_list, gun))
+                           text_list, button_number, give_gun, gun))
     return sprites
 
 
@@ -957,7 +956,7 @@ def get_distance(level_map, mapX, mapY, angle, position, viewDepth, colors, coor
     return distanceToWall, RayPointX, RayPointY, hitWall
 
 
-def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_number):
+def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_number, playerHealth=1500):
     pygame.init()
 
     walls_texture = 'дерево.png'
@@ -1028,7 +1027,7 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
     enemies = place_sprites(level_map, mapX, mapY, (255, 216, 0, 255), (255, 216, 106, 255), (0, 255, 0, 255),
                             (0, 255, 255, 255), 5, 4.5, 5, sprite_sheet, dead_sprite, sprite_sheet2, dead_sprite2,
                             sprite_sheet_scorp, dead_sprite_scorp, sprite_sheet_spider, 2, 4, 1, text,
-                            buttun_number, give_gun, weapon_list, k, gun)
+                            buttun_number, give_gun, k, gun)
 
     frame = random.uniform(0, 0, (horizontalResolution, HalfOfVerticalResolution * 2, 3))
 
@@ -1040,7 +1039,7 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
     # print(1)
     pygame.event.set_grab(1)
     size = min(mapX, mapY)
-    playerHealth = 1000
+    # playerHealth = 1000
 
     comparizon_creature = LaserCreature(0, 0, 0, deg2rad(60), 40, 80, (255, 100, 0, 255),
                                         (255, 0, 0, 255), 10, 0, sprite_sheet, dead_sprite, 0, 0)
@@ -1296,7 +1295,7 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
                 level_map = el.open(playerX, playerY, im, k, enemies, button_list)
             for en in enemies:
                 if type(en) not in [type(comparizon_creature), type(comparizon_creature2)]:
-                    give, weap_l, weap_n = en.talk(playerX, playerY, button_list, k, screen)
+                    give, weap_l, weap_n = en.talk(playerX, playerY, button_list, k, screen, weapon_list)
                     if give:
                         weapon_list = weap_l
                         weapon = weapon_list[weap_n]

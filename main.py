@@ -78,10 +78,10 @@ def how_to_play():
                    'laser_gun_shoot6.png', None, None, 'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png',
                    'laser_gun_no_shoot5.3.png', 'laser_gun_no_shoot5.4.png')
     gun = Weapon('gun', 120, 5, (255, 16, 0, 255), (0, 0, 0, 0), 'spider_gun_no_shoot_f6.png',
-                 'spider_gun_shoot.2.png', 10, 10, 'spider_gun_no_shoot_f0.2.png', 'spider_gun_no_shoot_f1.png',
+                 'spider_gun_shoot.2.png', 10**3, 10**3, 'spider_gun_no_shoot_f0.2.png', 'spider_gun_no_shoot_f1.png',
                  'spider_gun_no_shoot_f2.png', 'spider_gun_no_shoot_f3.png', 'spider_gun_no_shoot_f4.png',
                  'spider_gun_no_shoot_f5.png', 'spider_gun_no_shoot_f6.png')
-    hands = HandHitWeapon('hands', 40, 2, (0, 0, 255, 255), 'spider_hands_no_hit2.png',
+    hands = HandHitWeapon('hands', 40, 5, (0, 0, 255, 255), 'spider_hands_no_hit2.png',
                           'spider_hands_hit2.png', 'spider_hands_no_hit2.png', 'spider_hands_no_hit2.png')
     text = ['Сзади меня на стене есть красная кнопка.', 'Подойди к ней на нажми на "e", чтобы открыть дверь.',
             'Когда дверь откроется зайди туда.']
@@ -103,7 +103,7 @@ def how_to_play():
         if result:
             file2 = 'studing_map2.png'
             weapon_list = []
-            text = ['А теперь я дам тебе пушку, стреляющую осколками от роботов, как та оса.',
+            text = ['А теперь я дам тебе пушку, стреляющую осколками от роботов.',
                     'Нажимай левую кнопку мыши, чтобы стрелять.',
                     'Когда победишь, собери осколки с осы и переходи на следующий этап.']
             result, surf, weapon_list = main(file2, k, deg2rad(-90), True, weapon_list, gun, laser, text, 255)
