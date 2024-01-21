@@ -176,7 +176,7 @@ class HandHitWeapon():
         if self.can_hit:
             level_map = map_image.load()
             draw = ImageDraw.Draw(map_image)
-            k_range = k // 3
+            k_range = round(k / 3)
             if k_range <= 0:
                 k_range = 1
             cosx = cos(playerAngle) * k_range
