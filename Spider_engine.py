@@ -586,7 +586,7 @@ class Spider():
     def talk(self, playerX, playerY, button_list, k, screen, weapon_list):
         dist = ((playerX - self.spiderX) ** 2 + (playerY - self.spiderY) ** 2) ** 0.5
         can_talk = False
-        weapon_number = 0
+        # weapon_number = 0
         if dist < k:
             if self.button_number != 255:
                 for btn in button_list:
@@ -612,8 +612,8 @@ class Spider():
                         pygame.display.flip()
                 if self.give_gun:
                     weapon_list.append(self.gun)
-                    weapon_number = -1
-        return self.give_gun, weapon_list, weapon_number
+                    # weapon_number = -1
+        return self.give_gun, weapon_list
 
 
 class Button():
@@ -1295,10 +1295,11 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
                 level_map = el.open(playerX, playerY, im, k, enemies, button_list)
             for en in enemies:
                 if type(en) not in [type(comparizon_creature), type(comparizon_creature2)]:
-                    give, weap_l, weap_n = en.talk(playerX, playerY, button_list, k, screen, weapon_list)
+                    give, weap_l = en.talk(playerX, playerY, button_list, k, screen, weapon_list)
                     if give:
                         weapon_list = weap_l
-                        weapon = weapon_list[weap_n]
+                        if weapon_list:
+                            weapon = weapon_list[-1]
             level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
         p_mouse = pygame.mouse.get_rel()
         playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, .2)
