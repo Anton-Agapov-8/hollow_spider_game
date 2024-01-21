@@ -59,9 +59,9 @@ def how_to_play():
         text2_x = 1000 // 2 - text2.get_width() // 2
         text3_x = 1000 // 2 - text3.get_width() // 2
         text_y = 700 // 2 - text1.get_height() // 2
-        screen.blit(text1, (text1_x, text_y - 75 * 2))
-        screen.blit(text2, (text2_x, text_y - 75))
-        screen.blit(text3, (text3_x, text_y))
+        texts = [(text1, text1_x, text_y), (text2, text2_x, text_y), (text3, text3_x, text_y)]
+        for i in range(len(texts)):
+            screen.blit(texts[i][0], (texts[i][1], texts[i][2] - i * 35))
 
         font = pygame.font.Font(None, 20)
         text = font.render("Нажмите любую клавишу, чтобы продолжить.", True, (100, 255, 100))
@@ -78,13 +78,15 @@ def how_to_play():
                    'laser_gun_shoot6.png', None, None, 'laser_gun_no_shoot5.1.png', 'laser_gun_no_shoot5.2.png',
                    'laser_gun_no_shoot5.3.png', 'laser_gun_no_shoot5.4.png')
     gun = Weapon('gun', 120, 5, (255, 16, 0, 255), (0, 0, 0, 0), 'spider_gun_no_shoot_f6.png',
-                 'spider_gun_shoot.2.png', 10**3, 10**3, 'spider_gun_no_shoot_f0.2.png', 'spider_gun_no_shoot_f1.png',
+                 'spider_gun_shoot.2.png', 10 ** 3, 10 ** 3, 'spider_gun_no_shoot_f0.2.png',
+                 'spider_gun_no_shoot_f1.png',
                  'spider_gun_no_shoot_f2.png', 'spider_gun_no_shoot_f3.png', 'spider_gun_no_shoot_f4.png',
                  'spider_gun_no_shoot_f5.png', 'spider_gun_no_shoot_f6.png')
     hands = HandHitWeapon('hands', 40, 5, (0, 0, 255, 255), 'spider_hands_no_hit2.png',
                           'spider_hands_hit2.png', 'spider_hands_no_hit2.png', 'spider_hands_no_hit2.png')
     text = ['Сзади меня на стене есть красная кнопка.', 'Подойди к ней на нажми на "e", чтобы открыть дверь.',
-            'Когда дверь откроется зайди туда.']
+            'Когда дверь откроется зайди туда.', 'Каждый уровень основной игры имеет такие двери.',
+            'При входе в такую дверь, ты переходишь на следующий уровень.']
     weapon_list = [hands]
     result, surf, weapon_list = main(file, k, deg2rad(-90), False, weapon_list, gun, laser, text, 255)
     if result == -1:
@@ -94,7 +96,9 @@ def how_to_play():
     if result:
         file2 = 'studing_map2.png'
         text = ['Сзади меня стоит клетка с осой.', 'Открой клетку с помощью кнопки и сразись с осой.',
-                'Нажимай левую кнопку мыши, чтобы бить.', 'Когда победишь, открой дверь с помощью другой кнопки.']
+                'Нажимай левую кнопку мыши, чтобы бить.', 'Когда победишь, открой дверь с помощью другой кнопки.',
+                'В каждом уровне основной игры нужно уничтожить всех врагов.',
+                'Только тогда можно переходить на следующий.']
         result, surf, weapon_list = main(file2, k, deg2rad(-90), False, weapon_list, gun, laser, text, 255)
         if result == -1:
             main_menu()
