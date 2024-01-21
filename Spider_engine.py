@@ -961,7 +961,6 @@ def get_distance(level_map, mapX, mapY, angle, position, viewDepth, colors, coor
 
 def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_number, playerHealth=1500):
     pygame.init()
-
     walls_texture = 'дерево.png'
     floor_textire = 'дерево.png'
     buttons_texture = 'button.png'
@@ -972,6 +971,9 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
     scrY = 700
     screen = pygame.display.set_mode((scrX, scrY))
     im = Image.open(os.path.join('data', file))
+    # ico = pygame.image.load(os.path.join('data', 'game_icon.png'))
+    # pygame.display.set_icon(ico)
+
     # im = im.rotate(90)
     mapX, mapY = im.size
     level_map = im.load()
@@ -1240,7 +1242,7 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
         else:
             gun_k = 5
         if keys[pygame.K_ESCAPE]:
-            im.save('after_esc.png')
+            # im.save('after_esc.png')
             # return False, screen, weapon_list
             pause = True
             pygame.mouse.set_visible(1)

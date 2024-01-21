@@ -8,6 +8,9 @@ import sys
 
 def main_menu():
     pygame.init()
+    ico = pygame.image.load(os.path.join('data', 'game_icon.png'))
+    pygame.display.set_icon(ico)
+    pygame.display.set_caption('Паучье дупло')
     pygame.mouse.set_visible(1)
     pygame.event.set_grab(0)
     screen = pygame.display.set_mode((1000, 700))
