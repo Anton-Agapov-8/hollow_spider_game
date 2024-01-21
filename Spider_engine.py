@@ -176,8 +176,11 @@ class HandHitWeapon():
         if self.can_hit:
             level_map = map_image.load()
             draw = ImageDraw.Draw(map_image)
-            cosx = cos(playerAngle) * k
-            siny = sin(playerAngle) * k
+            k_range = k // 3
+            if k_range <= 0:
+                k_range = 1
+            cosx = cos(playerAngle) * k_range
+            siny = sin(playerAngle) * k_range
             hitX = playerX + cosx
             hitY = playerY + siny
             if 0 <= hitX < mapX and 0 <= hitY < mapY and level_map[hitX, hitY] not in [(0, 0, 0, 255),
@@ -1291,8 +1294,6 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
             if len(weapon_list) > 2:
                 weapon = weapon_list[2]
         if keys[pygame.K_e]:
-            for el in button_list:
-                level_map = el.open(playerX, playerY, im, k, enemies, button_list)
             for en in enemies:
                 if type(en) not in [type(comparizon_creature), type(comparizon_creature2)]:
                     give, weap_l = en.talk(playerX, playerY, button_list, k, screen, weapon_list)
@@ -1300,6 +1301,8 @@ def main(file, k, playerAngle, give_gun, weapon_list, gun, laser, text, buttun_n
                         weapon_list = weap_l
                         if weapon_list:
                             weapon = weapon_list[-1]
+            for el in button_list:
+                level_map = el.open(playerX, playerY, im, k, enemies, button_list)
             level_map_list = PixelAccess_to_list(level_map, (mapX, mapY))
         p_mouse = pygame.mouse.get_rel()
         playerAngle += numpy.clip((p_mouse[0]) / 200, -0.2, .2)
