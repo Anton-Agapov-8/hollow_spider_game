@@ -928,7 +928,7 @@ def check_for_player(playerX, playerY, creatureX, creatureY, creatureAngle, crea
                 hitWall = True
             elif level_map[RayPointX][RayPointY] == (0, 0, 0, 255) or level_map[RayPointX][RayPointY] == (
                     128, 128, 128, 255) or level_map[RayPointX][RayPointY] == (
-                    64, 64, 64, 255):
+                    64, 64, 64, 255) or level_map[RayPointX][RayPointY][3] < 255:
                 hitWall = True
             elif RayPointX == int(playerX) and RayPointY == int(playerY):
                 hitPlayer = True
